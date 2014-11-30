@@ -19,6 +19,7 @@ import json
 import requests
 import uuid
 from digitaloracle import Oracle
+from pycoin.services import get_tx_db
 
 def sign(tx, script, key):
     lookup = build_p2sh_lookup([script.script()])
@@ -66,7 +67,7 @@ def main():
                     print('could not parse %s %s' %(item, ex), file=sys.stderr)
                     pass
 
-    oracle = Oracle(keys)
+    oracle = Oracle(keys, tx_db=get_tx_db())
 
     if args.command == 'dump':
         for key in keys:
@@ -93,7 +94,7 @@ def main():
 #                print('- %s'%(inp.script))
             subkey = keys[0].subkey_for_path(args.subkey or "")
             sign(tx, script, subkey)
-            oracle.sign(tx)
+            oracle.sign(tx, [args.subkey], [None])
             print(b2h(stream_to_bytes(tx.stream)))
 
     else:
