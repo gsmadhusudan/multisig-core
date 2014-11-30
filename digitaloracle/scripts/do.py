@@ -1,34 +1,36 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
+import codecs
+import io
 
-from pdb import set_trace
 import sys
 import os
 import argparse
+
 from pycoin import encoding
-from pycoin.ecdsa import is_public_pair_valid, generator_secp256k1, public_pair_for_x, secp256k1
-from pycoin.serialize import b2h, h2b, stream_to_bytes
+from pycoin.serialize import b2h, stream_to_bytes
 from pycoin.key import Key
 from pycoin.key.BIP32Node import BIP32Node
-from pycoin.networks import full_network_name_for_netcode, network_name_for_netcode, NETWORK_NAMES
+from pycoin.networks import NETWORK_NAMES
 from pycoin.tx.pay_to import ScriptMultisig, build_p2sh_lookup
 from pycoin.tx import Tx
 from pycoin.tx.tx_utils import LazySecretExponentDB
-import json
-import requests
-import uuid
-from digitaloracle import Oracle
 from pycoin.services import get_tx_db
+
+from digitaloracle import Oracle
+
 
 def sign(tx, script, key):
     lookup = build_p2sh_lookup([script.script()])
     tx.sign(LazySecretExponentDB([key.wif()], {}), p2sh_lookup=lookup)
 
+
 def main():
     parser = argparse.ArgumentParser(
         description='CryptoCorp digitaloracle command line utility'
     )
+    parser.add_argument('-e', '--email')
     parser.add_argument('-n', '--network', default='BTC', choices=NETWORK_NAMES)
     parser.add_argument('-s', "--subkey", help='subkey path (example: 0H/2/15-20)')
     parser.add_argument('command')
@@ -64,7 +66,7 @@ def main():
                             pass
                         continue
                 except Exception as ex:
-                    print('could not parse %s %s' %(item, ex), file=sys.stderr)
+                    print('could not parse %s %s' % (item, ex), file=sys.stderr)
                     pass
 
     oracle = Oracle(keys, tx_db=get_tx_db())
@@ -73,7 +75,7 @@ def main():
         for key in keys:
             print(key.wallet_key(as_private=False))
     elif args.command == 'create':
-        oracle.create()
+        oracle.create(email=args.email)
         subkeys = [key.subkey_for_path(args.subkey or "") for key in keys]
         for key in subkeys:
             print(key.wallet_key(as_private=False))
