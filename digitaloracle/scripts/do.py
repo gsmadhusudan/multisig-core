@@ -107,7 +107,7 @@ def main():
             #print(b2h(stream_to_bytes(tx.stream)))
             print(result)
             if result.has_key('transaction'):
-                print(b2h(stream_to_bytes(result['transaction'])))
+                print(b2h(stream_to_bytes(result['transaction'].stream)))
     else:
         print('unknown command %s' %(args.command), file=sys.stderr)
 
