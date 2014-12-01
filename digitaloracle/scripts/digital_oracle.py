@@ -83,7 +83,9 @@ def main():
             print(key.wallet_key(as_private=False))
     elif args.command == 'create':
         oracle.create(email=args.email)
-        subkeys = [key.subkey_for_path(args.subkey or "") for key in keys]
+    elif args.command == 'address':
+        oracle.get()
+        subkeys = [key.subkey_for_path(args.subkey or "") for key in oracle.all_keys()]
         for key in subkeys:
             print(key.wallet_key(as_private=False))
         secs = [key.sec() for key in subkeys]
@@ -98,15 +100,15 @@ def main():
         for tx in txs:
             print(tx.id())
             print(b2h(stream_to_bytes(tx.stream)))
-#            print('scripts:')
-#            for inp in tx.txs_in:
-#                print('- %s'%(inp.script))
-            subkey = keys[0].subkey_for_path(args.subkey or "")
-            sign(tx, script, subkey)
+            child_key = keys[0].subkey_for_path(args.subkey or "")
+            # sign locally
+            sign(tx, script, child_key)
+            # have Oracle sign
             result = oracle.sign(tx, [args.subkey], [None], spend_id=args.spendid)
-            #print(b2h(stream_to_bytes(tx.stream)))
+            print("Result:")
             print(result)
             if result.has_key('transaction'):
+                print("Hex serialized transaction:")
                 print(b2h(stream_to_bytes(result['transaction'].stream)))
     else:
         print('unknown command %s' %(args.command), file=sys.stderr)

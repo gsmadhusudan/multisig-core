@@ -14,7 +14,7 @@ setup(
     entry_points={
         'console_scripts':
             [
-                'digitaloracle = digitaloracle.scripts.digitaloracle:main',
+                'digital_oracle = digitaloracle.scripts.digital_oracle:main',
                 'decode_script = digitaloracle.scripts.decode_script:main',
             ]
     },
