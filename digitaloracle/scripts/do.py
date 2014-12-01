@@ -23,7 +23,10 @@ from digitaloracle import Oracle
 
 def sign(tx, script, key):
     lookup = build_p2sh_lookup([script.script()])
-    tx.sign(LazySecretExponentDB([key.wif()], {}), p2sh_lookup=lookup)
+    db = LazySecretExponentDB([key.wif()], {})
+    #FIXME hack to work around broken p2sh signing in pycoin
+    tx.unspents[0].script = script.script()
+    tx.sign(db, p2sh_lookup=lookup)
 
 
 def main():
@@ -33,6 +36,8 @@ def main():
     parser.add_argument('-e', '--email')
     parser.add_argument('-n', '--network', default='BTC', choices=NETWORK_NAMES)
     parser.add_argument('-s', "--subkey", help='subkey path (example: 0H/2/15-20)')
+    parser.add_argument('-i', "--spendid", help='an additional hex string to disambiguate spends to the same address')
+    parser.add_argument('-u', "--baseurl", help='the API endpoint, defaults to https://s.digitaloracle.co/')
     parser.add_argument('command')
     parser.add_argument('item', nargs='+')
     args = parser.parse_args()
@@ -68,8 +73,10 @@ def main():
                 except Exception as ex:
                     print('could not parse %s %s' % (item, ex), file=sys.stderr)
                     pass
+        if tx is None and key is None:
+            print('could not understand item %s' % (item))
 
-    oracle = Oracle(keys, tx_db=get_tx_db())
+    oracle = Oracle(keys, tx_db=get_tx_db(), base_url=args.baseurl)
 
     if args.command == 'dump':
         for key in keys:
@@ -96,9 +103,11 @@ def main():
 #                print('- %s'%(inp.script))
             subkey = keys[0].subkey_for_path(args.subkey or "")
             sign(tx, script, subkey)
-            oracle.sign(tx, [args.subkey], [None])
-            print(b2h(stream_to_bytes(tx.stream)))
-
+            result = oracle.sign(tx, [args.subkey], [None], spend_id=args.spendid)
+            #print(b2h(stream_to_bytes(tx.stream)))
+            print(result)
+            if result.has_key('transaction'):
+                print(b2h(stream_to_bytes(result['transaction'])))
     else:
         print('unknown command %s' %(args.command), file=sys.stderr)
 

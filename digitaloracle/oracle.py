@@ -1,4 +1,5 @@
 from __future__ import print_function
+from pycoin.tx import Tx
 
 __author__ = 'sserrano'
 
@@ -22,7 +23,7 @@ class OracleError(Error):
 
 
 class Oracle(object):
-    def __init__(self, keys, tx_db, manager=None):
+    def __init__(self, keys, tx_db=None, manager=None, base_url=None):
         """
         Create an Oracle object
         :param keys: non-oracle deterministic keys
@@ -35,15 +36,15 @@ class Oracle(object):
         self.wallet_agent = 'digitaloracle-pycoin-0.01'
         self.oracle_keys = None
         self.tx_db = tx_db
+        self.base_url = base_url or 'https://s.digitaloracle.co/'
 
-    def sign(self, tx, input_chain_paths, output_chain_paths):
+    def sign(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
         """
         Have the Oracle sign the transaction
         :param tx: the transaction to be signed
         :param input_chain_paths: the derivation path for each input, or None if the input does not need to be signed
         :param output_chain_paths: the derivation path for each change output, or None if the output is not change
         """
-        replace_dummy(tx)  # TODO copy
         # Have the Oracle sign the tx
         chain_paths = []
         input_scripts = []
@@ -54,8 +55,10 @@ class Oracle(object):
                 raise Error("could not look up tx for %s" % (b2h(inp.previous_hash)))
             input_txs.append(input_tx)
             if input_chain_paths[i]:
-                input_scripts.append(self.script(input_chain_paths[i]).script())
+                redeem_script = self.script(input_chain_paths[i]).script()
+                input_scripts.append(redeem_script)
                 chain_paths.append(input_chain_paths[i])
+                fix_input_script(inp, redeem_script)
             else:
                 input_scripts.append(None)
                 chain_paths.append(None)
@@ -71,21 +74,30 @@ class Oracle(object):
                 "masterKeys": self.public_keys,
             }
         }
+        if spend_id:
+            req['spendId'] = spend_id
         body = json.dumps(req)
         url = self.url() + "/transactions"
         print(body)
         response = requests.post(url, body, headers={'content-type': 'application/json'})
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
-            self.oracle_keys = [BIP32Node.from_hwif(s) for s in result['keys']['default']]
+            if result.has_key('transaction'):
+                tx = Tx.tx_from_hex(result['transaction']['bytes'])
+            return {
+                'transaction': tx,
+                'now': result['now'],
+                'spendId': result['spendId'],
+                'deferral': result['deferral']
+            }
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
-            raise Error("Unknown response " + response.status_code)
+            raise Error("Unknown response %d" % (response.status_code))
 
     def url(self):
         account_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self.public_keys[0])))
-        url = 'https://s.digitaloracle.co/keychains/' + account_id
+        url = self.base_url + "keychains/" + account_id
         return url
 
     def get(self):
@@ -159,13 +171,14 @@ def dummy_signature(sig_type):
     return der.sigencode_der(r, s) + bytes_from_int(sig_type)
 
 
-def replace_dummy(tx):
-    """replace dummy signatures with OP_0 for digitaloracle compatibility"""
+def fix_input_script(inp, redeem_script):
+    """replace dummy signatures with OP_0 and add redeem script for digitaloracle compatibility"""
     dummy = b2h(dummy_signature(1))
-    for inp in tx.txs_in:
-        ops1 = []
-        for op in opcode_list(inp.script):
-            if op == dummy:
-                op = 'OP_0'
-            ops1.append(op)
-        inp.script = compile(' '.join(ops1))
+    ops1 = []
+    for op in opcode_list(inp.script):
+        if op == dummy:
+            op = 'OP_0'
+        ops1.append(op)
+    #FIXME hack to add redeem script omitted by pycoin
+    ops1.append(b2h(redeem_script))
+    inp.script = compile(' '.join(ops1))
