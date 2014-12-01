@@ -14,7 +14,8 @@ setup(
     entry_points={
         'console_scripts':
             [
-                'digitaloracle = digitaloracle.scripts.do:main'
+                'digitaloracle = digitaloracle.scripts.digitaloracle:main',
+                'decode_script = digitaloracle.scripts.decode_script:main',
             ]
     },
     description='The CryptoCorp digitaloracle API for pycoin ',
