@@ -1,7 +1,7 @@
 from __future__ import print_function
 from pycoin.tx import Tx
 
-__author__ = 'sserrano'
+__author__ = 'sserrano, devrandom'
 
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
@@ -23,10 +23,14 @@ class OracleError(Error):
 
 
 class Oracle(object):
+    """Keep track of a single Oracle account, including user keys and oracle master public key"""
+
     def __init__(self, keys, tx_db=None, manager=None, base_url=None):
         """
         Create an Oracle object
+
         :param keys: non-oracle deterministic keys
+        :type keys: list[pycoin.key.Key]
         :param tx_db: lookup database for transactions - see pycoin.services.get_tx_db()
         :param manager: the manager identifier for this wallet (only used on creation for now)
         """
@@ -42,9 +46,17 @@ class Oracle(object):
     def sign(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
         """
         Have the Oracle sign the transaction
+
         :param tx: the transaction to be signed
+        :type tx: Tx
         :param input_chain_paths: the derivation path for each input, or None if the input does not need to be signed
+        :type input_chain_paths: list[str]
         :param output_chain_paths: the derivation path for each change output, or None if the output is not change
+        :type output_chain_paths: list[str]
+        :param spend_id: an additional hex ID to disambiguate sends to the same outputs
+        :type spend_id: str
+        :return: a dictionary with the transaction in 'transaction' if successful
+        :rtype: dict
         """
         # Have the Oracle sign the tx
         chain_paths = []
@@ -83,7 +95,7 @@ class Oracle(object):
         response = requests.post(url, body, headers={'content-type': 'application/json'})
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
-            if result.has_key('transaction'):
+            if 'transaction' in result:
                 tx = Tx.tx_from_hex(result['transaction']['bytes'])
             return {
                 'transaction': tx,
@@ -94,7 +106,7 @@ class Oracle(object):
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
-            raise Error("Unknown response %d" % (response.status_code))
+            raise Error("Unknown response %d" % (response.status_code,))
 
     def url(self):
         account_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self.public_keys[0])))
@@ -102,7 +114,7 @@ class Oracle(object):
         return url
 
     def get(self):
-        """Retrieve the oracle public key"""
+        """Retrieve the oracle public key from the Oracle"""
         url = self.url()
         response = requests.get(url)
         result = response.json()
@@ -116,8 +128,11 @@ class Oracle(object):
     def create(self, email=None, phone=None):
         """
         Create an Oracle keychain on server and retrieve the oracle public key
+
         :param email: the email contact
-        :return:
+        :type email: str or unicode
+        :param phone: the phone contact
+        :type phone: str or unicode
         """
         r = {'walletAgent': self.wallet_agent, 'rulesetId': 'default'}
         if self.manager:
@@ -152,13 +167,20 @@ class Oracle(object):
             raise Error("Unknown response " + response.status_code)
 
     def all_keys(self):
+        """Get all account extended keys, including the oracle key"""
         if self.oracle_keys:
             return self.keys + self.oracle_keys
         else:
             raise OracleError("oracle_keys not initialized - get, create, or set the property")
 
     def script(self, path):
-        """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden."""
+        """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
+
+        :param: path: the derivation path
+        :type: path: str
+        :return: the script
+        :rtype: ScriptMultisig
+        """
         subkeys = [key.subkey_for_path(path or "") for key in self.all_keys()]
         secs = [key.sec() for key in subkeys]
         secs.sort()
@@ -180,6 +202,6 @@ def fix_input_script(inp, redeem_script):
         if op == dummy:
             op = 'OP_0'
         ops1.append(op)
-    #FIXME hack to add redeem script omitted by pycoin
+    # FIXME hack to add redeem script omitted by pycoin
     ops1.append(b2h(redeem_script))
     inp.script = compile(' '.join(ops1))

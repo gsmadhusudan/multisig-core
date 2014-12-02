@@ -25,7 +25,7 @@ from digitaloracle import Oracle
 def sign(tx, script, key):
     lookup = build_p2sh_lookup([script.script()])
     db = LazySecretExponentDB([key.wif()], {})
-    #FIXME hack to work around broken p2sh signing in pycoin
+    # FIXME hack to work around broken p2sh signing in pycoin
     tx.unspents[0].script = script.script()
     tx.sign(db, p2sh_lookup=lookup)
 
