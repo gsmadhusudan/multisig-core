@@ -35,13 +35,20 @@ def main():
         description='DigitalOracle HD multisig command line utility',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument('-e', '--email')
-    parser.add_argument('-n', '--network', default='BTC', choices=NETWORK_NAMES)
-    parser.add_argument('-s', "--subkey", help='HD subkey path (example: 0/2/15)')
-    parser.add_argument('-i', "--spendid", help='an additional hex string to disambiguate spends to the same address')
-    parser.add_argument('-u', "--baseurl", help='the API endpoint, defaults to the sandbox - https://s.digitaloracle.co/')
-    parser.add_argument('command', help="""a command""")
-    parser.add_argument('item', nargs='+', help="""a key""")
+    parser.add_argument('-e', '--email',
+                        help='e-mail for create')
+    parser.add_argument('-n', '--network',
+                        default='BTC', choices=NETWORK_NAMES)
+    parser.add_argument('-s', "--subkey",
+                        help='HD subkey path (example: 0/2/15)')
+    parser.add_argument('-i', "--spendid",
+                        help='an additional hex string to disambiguate spends to the same address')
+    parser.add_argument('-u', "--baseurl",
+                        help='the API endpoint, defaults to the sandbox - https://s.digitaloracle.co/')
+    parser.add_argument('command',
+                        help="""a command""")
+    parser.add_argument('item',
+                        nargs='+', help="""a key""")
     parser.epilog = textwrap.dedent("""
     Items:
      * P:wallet_passphrase - a secret for deriving an HD hierarchy with private keys
@@ -92,7 +99,7 @@ def main():
                     print('could not parse %s %s' % (item, ex), file=sys.stderr)
                     pass
         if tx is None and key is None:
-            print('could not understand item %s' % (item))
+            print('could not understand item %s' % (item,))
 
     oracle = Oracle(keys, tx_db=get_tx_db(), base_url=args.baseurl)
 
@@ -126,11 +133,11 @@ def main():
             result = oracle.sign(tx, [args.subkey], [None], spend_id=args.spendid)
             print("Result:")
             print(result)
-            if result.has_key('transaction'):
+            if 'transaction' in result:
                 print("Hex serialized transaction:")
                 print(b2h(stream_to_bytes(result['transaction'].stream)))
     else:
-        print('unknown command %s' %(args.command), file=sys.stderr)
+        print('unknown command %s' % (args.command,), file=sys.stderr)
 
 if __name__ == '__main__':
     main()

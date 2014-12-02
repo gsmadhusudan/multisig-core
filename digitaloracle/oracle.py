@@ -50,9 +50,9 @@ class Oracle(object):
         :param tx: the transaction to be signed
         :type tx: Tx
         :param input_chain_paths: the derivation path for each input, or None if the input does not need to be signed
-        :type input_chain_paths: list[str]
+        :type input_chain_paths: list[str or None]
         :param output_chain_paths: the derivation path for each change output, or None if the output is not change
-        :type output_chain_paths: list[str]
+        :type output_chain_paths: list[str or None]
         :param spend_id: an additional hex ID to disambiguate sends to the same outputs
         :type spend_id: str
         :return: a dictionary with the transaction in 'transaction' if successful
