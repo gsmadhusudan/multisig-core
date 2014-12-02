@@ -114,10 +114,7 @@ def main():
         subkeys = [key.subkey_for_path(args.subkey or "") for key in oracle.all_keys()]
         for key in subkeys:
             print(key.wallet_key(as_private=False))
-        secs = [key.sec() for key in subkeys]
-        secs.sort()
-        print([b2h(s) for s in secs])
-        script = ScriptMultisig(2, secs)
+        script = oracle.script(args.subkey)
         print(script.address(netcode=args.network))
     elif args.command == 'sign':
         oracle.get()
