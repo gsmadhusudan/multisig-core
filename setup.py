@@ -16,6 +16,7 @@ setup(
             [
                 'digital_oracle = digitaloracle.scripts.digital_oracle:main',
                 'decode_script = digitaloracle.scripts.decode_script:main',
+                'decode_tx_scripts = digitaloracle.scripts.decode_tx_scripts:main',
             ]
     },
     description='The CryptoCorp digitaloracle API for pycoin ',
