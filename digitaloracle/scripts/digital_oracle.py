@@ -7,6 +7,7 @@ import io
 import sys
 import os
 import argparse
+import textwrap
 
 from pycoin import encoding
 from pycoin.serialize import b2h, stream_to_bytes
@@ -31,15 +32,32 @@ def sign(tx, script, key):
 
 def main():
     parser = argparse.ArgumentParser(
-        description='CryptoCorp digitaloracle command line utility'
+        description='DigitalOracle HD multisig command line utility',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument('-e', '--email')
     parser.add_argument('-n', '--network', default='BTC', choices=NETWORK_NAMES)
-    parser.add_argument('-s', "--subkey", help='subkey path (example: 0H/2/15-20)')
+    parser.add_argument('-s', "--subkey", help='HD subkey path (example: 0/2/15)')
     parser.add_argument('-i', "--spendid", help='an additional hex string to disambiguate spends to the same address')
-    parser.add_argument('-u', "--baseurl", help='the API endpoint, defaults to https://s.digitaloracle.co/')
-    parser.add_argument('command')
-    parser.add_argument('item', nargs='+')
+    parser.add_argument('-u', "--baseurl", help='the API endpoint, defaults to the sandbox - https://s.digitaloracle.co/')
+    parser.add_argument('command', help="""a command""")
+    parser.add_argument('item', nargs='+', help="""a key""")
+    parser.epilog = textwrap.dedent("""
+    Items:
+     * P:wallet_passphrase - a secret for deriving an HD hierarchy with private keys
+     * xpub - an account extended public key for deriving an HD hierarchy with public keys only
+     * FILE.bin - unsigned transaction binary
+     * FILE.hex - unsigned transaction hex
+
+    Commands:
+     * dump - dump the public subkeys
+     * create - create Oracle account based on the supplied leading key with with any additional keys
+     * address - get the deposit address for a subkey path
+     * sign - sign a transaction, tx.bin or tx.hex must be supplied. Only one subkey path is supported.
+
+    Notes:
+     * --subkey is applicable for the address and sign actions, but not the create action
+    """)
     args = parser.parse_args()
 
     keys = []
@@ -79,7 +97,8 @@ def main():
     oracle = Oracle(keys, tx_db=get_tx_db(), base_url=args.baseurl)
 
     if args.command == 'dump':
-        for key in keys:
+        subkeys = [key.subkey_for_path(args.subkey or "") for key in keys]
+        for key in subkeys:
             print(key.wallet_key(as_private=False))
     elif args.command == 'create':
         oracle.create(email=args.email)

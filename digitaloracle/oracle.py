@@ -37,6 +37,7 @@ class Oracle(object):
         self.oracle_keys = None
         self.tx_db = tx_db
         self.base_url = base_url or 'https://s.digitaloracle.co/'
+        self.num_sigs = len(keys)
 
     def sign(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
         """
@@ -157,11 +158,11 @@ class Oracle(object):
             raise OracleError("oracle_keys not initialized - get, create, or set the property")
 
     def script(self, path):
-        """Get the redeem script for the path"""
+        """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden."""
         subkeys = [key.subkey_for_path(path or "") for key in self.all_keys()]
         secs = [key.sec() for key in subkeys]
         secs.sort()
-        script = ScriptMultisig(2, secs)
+        script = ScriptMultisig(self.num_sigs, secs)
         return script
 
 
