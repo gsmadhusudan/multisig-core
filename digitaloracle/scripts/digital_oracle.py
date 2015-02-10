@@ -1,24 +1,23 @@
 #!/usr/bin/env python
 
 from __future__ import print_function
-import codecs
 import io
-
 import sys
-import os
 import argparse
 import textwrap
+
+import codecs
+import os
 
 from pycoin import encoding
 from pycoin.serialize import b2h, stream_to_bytes
 from pycoin.key import Key
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.networks import NETWORK_NAMES
-from pycoin.tx.pay_to import ScriptMultisig, build_p2sh_lookup
+from pycoin.tx.pay_to import build_p2sh_lookup
 from pycoin.tx import Tx
 from pycoin.tx.tx_utils import LazySecretExponentDB
 from pycoin.services import get_tx_db
-
 from digitaloracle import Oracle
 
 
@@ -111,15 +110,20 @@ def main():
         oracle.create(email=args.email)
     elif args.command == 'address':
         oracle.get()
+        print("* account keys")
+        print(oracle.all_keys())
         subkeys = [key.subkey_for_path(args.subkey or "") for key in oracle.all_keys()]
+        print("* child keys")
         for key in subkeys:
             print(key.wallet_key(as_private=False))
-        script = oracle.script(args.subkey)
-        print(script.address(netcode=args.network))
+        payto = oracle.payto(args.subkey)
+        print("* address")
+        print(payto.address(netcode=args.network))
     elif args.command == 'sign':
         oracle.get()
         script = oracle.script(args.subkey)
-        print(script.address(netcode=args.network))
+        payto = oracle.payto(args.subkey)
+        print(payto.address(netcode=args.network))
         for tx in txs:
             print(tx.id())
             print(b2h(stream_to_bytes(tx.stream)))

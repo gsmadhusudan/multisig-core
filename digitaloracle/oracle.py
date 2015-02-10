@@ -6,9 +6,10 @@ __author__ = 'sserrano, devrandom'
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
 from pycoin.key.BIP32Node import BIP32Node
-from pycoin.tx.pay_to import ScriptMultisig
+from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 from pycoin.tx.script.tools import *
 from pycoin.tx.script import der
+from pycoin import encoding
 import json
 import requests
 import uuid
@@ -43,21 +44,7 @@ class Oracle(object):
         self.base_url = base_url or 'https://s.digitaloracle.co/'
         self.num_sigs = len(keys)
 
-    def sign(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
-        """
-        Have the Oracle sign the transaction
-
-        :param tx: the transaction to be signed
-        :type tx: Tx
-        :param input_chain_paths: the derivation path for each input, or None if the input does not need to be signed
-        :type input_chain_paths: list[str or None]
-        :param output_chain_paths: the derivation path for each change output, or None if the output is not change
-        :type output_chain_paths: list[str or None]
-        :param spend_id: an additional hex ID to disambiguate sends to the same outputs
-        :type spend_id: str
-        :return: a dictionary with the transaction in 'transaction' if successful
-        :rtype: dict
-        """
+    def create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx):
         # Have the Oracle sign the tx
         chain_paths = []
         input_scripts = []
@@ -75,7 +62,6 @@ class Oracle(object):
             else:
                 input_scripts.append(None)
                 chain_paths.append(None)
-
         req = {
             "walletAgent": self.wallet_agent,
             "transaction": {
@@ -89,6 +75,24 @@ class Oracle(object):
         }
         if spend_id:
             req['spendId'] = spend_id
+        return req
+
+    def sign(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
+        """
+        Have the Oracle sign the transaction
+
+        :param tx: the transaction to be signed
+        :type tx: Tx
+        :param input_chain_paths: the derivation path for each input, or None if the input does not need to be signed
+        :type input_chain_paths: list[str or None]
+        :param output_chain_paths: the derivation path for each change output, or None if the output is not change
+        :type output_chain_paths: list[str or None]
+        :param spend_id: an additional hex ID to disambiguate sends to the same outputs
+        :type spend_id: str
+        :return: a dictionary with the transaction in 'transaction' if successful
+        :rtype: dict
+        """
+        req = self.create_oracle_request(input_chain_paths, output_chain_paths, spend_id, tx)
         body = json.dumps(req)
         url = self.url() + "/transactions"
         print(body)
@@ -187,6 +191,17 @@ class Oracle(object):
         script = ScriptMultisig(self.num_sigs, secs)
         return script
 
+    def payto(self, path):
+        """Get the payto script for the path.  See also :meth:`.script`
+
+        :param: path: the derivation path
+        :type: path: str
+        :return: the script
+        :rtype: ScriptPayToScript
+        """
+        script = self.script(path)
+        payto = ScriptPayToScript(hash160=encoding.hash160(script.script()))
+        return payto
 
 def dummy_signature(sig_type):
     order = generator_secp256k1.order()
