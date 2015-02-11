@@ -14,19 +14,10 @@ from pycoin.serialize import b2h, stream_to_bytes
 from pycoin.key import Key
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.networks import NETWORK_NAMES
-from pycoin.tx.pay_to import build_p2sh_lookup
 from pycoin.tx import Tx
-from pycoin.tx.tx_utils import LazySecretExponentDB
 from pycoin.services import get_tx_db
 from digitaloracle import Oracle
-
-
-def sign(tx, script, key):
-    lookup = build_p2sh_lookup([script.script()])
-    db = LazySecretExponentDB([key.wif()], {})
-    # FIXME hack to work around broken p2sh signing in pycoin
-    tx.unspents[0].script = script.script()
-    tx.sign(db, p2sh_lookup=lookup)
+from itertools import izip_longest
 
 
 def main():
@@ -38,9 +29,13 @@ def main():
                         help='e-mail for create')
     parser.add_argument('-n', '--network',
                         default='BTC', choices=NETWORK_NAMES)
-    parser.add_argument('-s', "--subkey",
-                        help='HD subkey path (example: 0/2/15)')
-    parser.add_argument('-i', "--spendid",
+    parser.add_argument('-i', "--inputpath",
+                        nargs='+',
+                        help='HD subkey path for each input (example: 0/2/15)')
+    parser.add_argument('-c', "--changepath",
+                        nargs='+',
+                        help='HD subkey path for each change output (example: 0/2/15) or a dash for non-change outputs')
+    parser.add_argument('-s', "--spendid",
                         help='an additional hex string to disambiguate spends to the same address')
     parser.add_argument('-u', "--baseurl",
                         help='the API endpoint, defaults to the sandbox - https://s.digitaloracle.co/')
@@ -103,8 +98,8 @@ def main():
     oracle = Oracle(keys, tx_db=get_tx_db(), base_url=args.baseurl)
 
     if args.command == 'dump':
-        subkeys = [key.subkey_for_path(args.subkey or "") for key in keys]
-        for key in subkeys:
+        sub_keys = [key.subkey_for_path(path or "") for key, path in izip_longest(keys, args.inputpath)]
+        for key in sub_keys:
             print(key.wallet_key(as_private=False))
     elif args.command == 'create':
         oracle.create(email=args.email)
@@ -112,26 +107,26 @@ def main():
         oracle.get()
         print("* account keys")
         print(oracle.all_keys())
-        subkeys = [key.subkey_for_path(args.subkey or "") for key in oracle.all_keys()]
+        path = args.inputpath[0] if args.inputpath else ""
+        sub_keys = [key.subkey_for_path(path) for key in oracle.all_keys()]
         print("* child keys")
-        for key in subkeys:
+        for key in sub_keys:
             print(key.wallet_key(as_private=False))
-        payto = oracle.payto(args.subkey)
+        payto = oracle.payto(path)
         print("* address")
         print(payto.address(netcode=args.network))
     elif args.command == 'sign':
         oracle.get()
-        script = oracle.script(args.subkey)
-        payto = oracle.payto(args.subkey)
-        print(payto.address(netcode=args.network))
+        scripts = [oracle.script(path) for path in args.inputpath]
+        change_paths = [None if path == '-' else path for path in args.changepath]
         for tx in txs:
             print(tx.id())
             print(b2h(stream_to_bytes(tx.stream)))
-            child_key = keys[0].subkey_for_path(args.subkey or "")
+            sub_keys = [keys[0].subkey_for_path(path) for path in args.inputpath]
             # sign locally
-            sign(tx, script, child_key)
+            sign(tx, scripts, sub_keys)
             # have Oracle sign
-            result = oracle.sign(tx, [args.subkey], [None], spend_id=args.spendid)
+            result = oracle.sign(tx, args.inputpath, change_paths, spend_id=args.spendid)
             print("Result:")
             print(result)
             if 'transaction' in result:
