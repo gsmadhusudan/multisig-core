@@ -1,8 +1,5 @@
 from __future__ import print_function
 from pycoin.tx import Tx
-
-__author__ = 'sserrano, devrandom'
-
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
 from pycoin.key.BIP32Node import BIP32Node
@@ -14,6 +11,7 @@ import json
 import requests
 import uuid
 
+__author__ = 'sserrano, devrandom'
 
 class Error(Exception):
     pass
