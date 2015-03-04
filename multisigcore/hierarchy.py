@@ -1,6 +1,8 @@
 from __future__ import print_function
+from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.serialize import h2b
+from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 
 __author__ = 'devrandom'
 
@@ -22,3 +24,59 @@ class MasterKey(BIP32Node):
         return cls.from_hwif(key)
     def account(self, path):
         return AccountKey.from_key(self.subkey_for_path(path).hwif(as_private=True))
+
+class MultisigAccount:
+    def __init__(self, keys, num_sigs=None, complete=True):
+        """
+        Create an Oracle object
+
+        :param keys: non-oracle deterministic keys
+        :type keys: list[pycoin.key.Key]
+        :param tx_db: lookup database for transactions - see pycoin.services.get_tx_db()
+        :param complete: whether we need additional keys to complete the configuration of this account
+        """
+        self.keys = keys
+        self.public_keys = [str(key.wallet_key(as_private=False)) for key in self.keys]
+        self.num_sigs = num_sigs if num_sigs else len(keys) - 1
+        self.complete = complete
+
+    def add_key(self, key):
+        if self.complete:
+            raise Exception("account already complete")
+        self.keys.append(key)
+        self.public_keys.append(key.wallet_key(as_private=False))
+
+    def add_keys(self, keys):
+        for key in keys:
+            self.add_key(key)
+
+    def set_complete(self):
+        if self.complete:
+            raise Exception("account already complete")
+        self.complete = True
+
+    def script(self, path):
+        """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
+
+        :param: path: the derivation path
+        :type: path: str
+        :return: the script
+        :rtype: ScriptMultisig
+        """
+        subkeys = [key.subkey_for_path(path or "") for key in self.keys]
+        secs = [key.sec() for key in subkeys]
+        secs.sort()
+        script = ScriptMultisig(self.num_sigs, secs)
+        return script
+
+    def payto(self, path):
+        """Get the payto script for the path.  See also :meth:`.script`
+
+        :param: path: the derivation path
+        :type: path: str
+        :return: the script
+        :rtype: ScriptPayToScript
+        """
+        script = self.script(path)
+        payto = ScriptPayToScript(hash160=encoding.hash160(script.script()))
+        return payto

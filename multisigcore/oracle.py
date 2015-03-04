@@ -2,11 +2,9 @@ from __future__ import print_function
 from pycoin.tx import Tx
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
-from pycoin.key.BIP32Node import BIP32Node
-from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
+from hierarchy import MultisigAccount, AccountKey
 from pycoin.tx.script.tools import *
 from pycoin.tx.script import der
-from pycoin import encoding
 import json
 import requests
 import uuid
@@ -24,23 +22,21 @@ class OracleError(Error):
 class Oracle(object):
     """Keep track of a single Oracle account, including user keys and oracle master public key"""
 
-    def __init__(self, keys, tx_db=None, manager=None, base_url=None):
+    def __init__(self, account, tx_db=None, manager=None, base_url=None, num_oracle_keys=1):
         """
         Create an Oracle object
 
-        :param keys: non-oracle deterministic keys
-        :type keys: list[pycoin.key.Key]
+        :param account: multisig account
+        :type account: MultisigAccount
         :param tx_db: lookup database for transactions - see pycoin.services.get_tx_db()
         :param manager: the manager identifier for this wallet (only used on creation for now)
         """
-        self.keys = keys
+        self.account = account
         self.manager = manager
-        self.public_keys = [str(key.wallet_key(as_private=False)) for key in self.keys]
         self.wallet_agent = 'digitaloracle-pycoin-0.01'
-        self.oracle_keys = None
         self.tx_db = tx_db
         self.base_url = base_url or 'https://s.digitaloracle.co/'
-        self.num_sigs = len(keys)
+        self.num_oracle_keys = num_oracle_keys
 
     def create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx):
         # Have the Oracle sign the tx
@@ -53,7 +49,7 @@ class Oracle(object):
                 raise Error("could not look up tx for %s" % (b2h(inp.previous_hash)))
             input_txs.append(input_tx)
             if input_chain_paths[i]:
-                redeem_script = self.script(input_chain_paths[i]).script()
+                redeem_script = self.account.script(input_chain_paths[i]).script()
                 input_scripts.append(redeem_script)
                 chain_paths.append(input_chain_paths[i])
                 fix_input_script(inp, redeem_script)
@@ -68,7 +64,7 @@ class Oracle(object):
                 "inputTransactions": [b2h(stream_to_bytes(tx.stream)) for tx in input_txs],
                 "chainPaths": chain_paths,
                 "outputChainPaths": output_chain_paths,
-                "masterKeys": self.public_keys,
+                "masterKeys": self.account.public_keys[0:-self.num_oracle_keys],
             }
         }
         if spend_id:
@@ -111,17 +107,21 @@ class Oracle(object):
             raise Error("Unknown response %d" % (response.status_code,))
 
     def url(self):
-        account_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self.public_keys[0])))
+        account_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self.account.public_keys[0])))
         url = self.base_url + "keychains/" + account_id
         return url
 
     def get(self):
         """Retrieve the oracle public key from the Oracle"""
+        if self.account.complete:
+            raise Exception("the account for this Oracle is already complete")
         url = self.url()
         response = requests.get(url)
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
-            self.oracle_keys = [BIP32Node.from_hwif(s) for s in result['keys']['default']]
+            self.account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
+            self.num_oracle_keys = len(result['keys']['default'])
+            self.account.set_complete()
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
@@ -136,6 +136,8 @@ class Oracle(object):
         :param phone: the phone contact
         :type phone: str or unicode
         """
+        if self.account.complete:
+            raise Exception("account already complete")
         r = {'walletAgent': self.wallet_agent, 'rulesetId': 'default'}
         if self.manager:
             r['managerUsername'] = self.manager
@@ -160,46 +162,15 @@ class Oracle(object):
 
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
-            self.oracle_keys = [BIP32Node.from_hwif(s) for s in result['keys']['default']]
+            self.account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
+            self.num_oracle_keys = len(result['keys']['default'])
+            self.account.set_complete()
         elif response.status_code == 400 and result.get('error', None) == 'already exists':
             raise OracleError("already exists")
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
             raise Error("Unknown response " + response.status_code)
-
-    def all_keys(self):
-        """Get all account extended keys, including the oracle key"""
-        if self.oracle_keys:
-            return self.keys + self.oracle_keys
-        else:
-            raise OracleError("oracle_keys not initialized - get, create, or set the property")
-
-    def script(self, path):
-        """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
-
-        :param: path: the derivation path
-        :type: path: str
-        :return: the script
-        :rtype: ScriptMultisig
-        """
-        subkeys = [key.subkey_for_path(path or "") for key in self.all_keys()]
-        secs = [key.sec() for key in subkeys]
-        secs.sort()
-        script = ScriptMultisig(self.num_sigs, secs)
-        return script
-
-    def payto(self, path):
-        """Get the payto script for the path.  See also :meth:`.script`
-
-        :param: path: the derivation path
-        :type: path: str
-        :return: the script
-        :rtype: ScriptPayToScript
-        """
-        script = self.script(path)
-        payto = ScriptPayToScript(hash160=encoding.hash160(script.script()))
-        return payto
 
 def dummy_signature(sig_type):
     order = generator_secp256k1.order()
