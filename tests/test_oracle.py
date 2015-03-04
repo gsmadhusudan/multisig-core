@@ -27,7 +27,7 @@ class OracleTest(unittest.TestCase):
         self.oracle = Oracle(self.account, tx_db=self.tx_db)
 
     def test_payto(self):
-        payto = self.account.payto(TEST_PATH)
+        payto = self.account.payto_for_path(TEST_PATH)
         self.assertEqual("34DjTcNWGReJV4xx7R1AWK7FTz3xMwMcjA", payto.address())
 
     def test_sign(self):
@@ -36,7 +36,7 @@ class OracleTest(unittest.TestCase):
 
         unsigned = Tx.parse(f)
         unsigned.parse_unspents(f)
-        script = self.account.script(TEST_PATH)
+        script = self.account.script_for_path(TEST_PATH)
         child_key = self.wallet_private_key.subkey_for_path(TEST_PATH)
         local_sign(unsigned, [script], [child_key])
         req = self.oracle.create_oracle_request([TEST_PATH], [], None, unsigned)
@@ -49,7 +49,7 @@ class OracleTest(unittest.TestCase):
         f = io.BytesIO(h2b("01000000019cb9e92cd3f91087852382150f19b5d99259be47106d860055d1afb8110022250000000000ffffffff02905f01000000000017a914f155ba65bdb30930da320ec51a0d6c913dfce06b87400d03000000000017a9141bbf6712630dd01fab4e70ac91a06925d138f2738700000000e09304000000000017a9141bbf6712630dd01fab4e70ac91a06925d138f27387"))
         unsigned = Tx.parse(f)
         unsigned.parse_unspents(f)
-        script = self.account.script(TEST_PATH)
+        script = self.account.script_for_path(TEST_PATH)
         child_key = self.wallet_private_key.subkey_for_path(TEST_PATH)
         local_sign(unsigned, [script], [child_key])
         req = self.oracle.create_oracle_request([TEST_PATH], [None, TEST_PATH], None, unsigned)

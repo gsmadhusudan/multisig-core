@@ -114,12 +114,12 @@ def main():
         print("* child keys")
         for key in sub_keys:
             print(key.wallet_key(as_private=False))
-        payto = account.payto(path)
+        payto = account.payto_for_path(path)
         print("* address")
         print(payto.address(netcode=args.network))
     elif args.command == 'sign':
         oracle.get()
-        scripts = [account.script(path) for path in args.inputpath]
+        scripts = [account.script_for_path(path) for path in args.inputpath]
         change_paths = [None if path == '-' else path for path in args.changepath]
         for tx in txs:
             print(tx.id())

@@ -1,7 +1,6 @@
 from __future__ import print_function
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
-from pycoin.serialize import h2b
 from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 
 __author__ = 'devrandom'
@@ -11,7 +10,11 @@ class AccountKey(BIP32Node):
     @classmethod
     def from_key(cls, key):
         return cls.from_hwif(key)
-    def leaf(self, path):
+
+    def leaf(self, n, change=False):
+        return self.leaf_for_path("%s/%s" % (n, 1 if change else 0))
+
+    def leaf_for_path(self, path):
         return self.subkey_for_path(path)
 
 
@@ -19,11 +22,23 @@ class MasterKey(BIP32Node):
     @classmethod
     def from_seed(cls, master_secret, netcode='BTC'):
         return cls.from_master_secret(master_secret, netcode=netcode)
+
     @classmethod
     def from_key(cls, key):
         return cls.from_hwif(key)
-    def account(self, path):
+
+    def account_for_path(self, path):
         return AccountKey.from_key(self.subkey_for_path(path).hwif(as_private=True))
+
+    def electrum_account(self, n):
+        return self.account_for_path("0H/%s" % (n,))
+
+    def bip32_account(self, n):
+        return self.account_for_path("%sH" % (n,))
+
+    def bip44_account(self, n, purpose=0, coin=0):
+        return self.account_for_path("%sH/%sH/%sH" % (purpose, coin, n))
+
 
 class MultisigAccount:
     def __init__(self, keys, num_sigs=None, complete=True):
@@ -31,8 +46,8 @@ class MultisigAccount:
         Create an Oracle object
 
         :param keys: non-oracle deterministic keys
-        :type keys: list[pycoin.key.Key]
-        :param tx_db: lookup database for transactions - see pycoin.services.get_tx_db()
+        :type keys: list[BIP32Node]
+        :param num_sigs: number of required signatures
         :param complete: whether we need additional keys to complete the configuration of this account
         """
         self.keys = keys
@@ -55,7 +70,13 @@ class MultisigAccount:
             raise Exception("account already complete")
         self.complete = True
 
-    def script(self, path):
+    def leaf_script(self, n, change=False):
+        return self.script_for_path("%s/%s" % (n, 1 if change else 0))
+
+    def leaf_payto(self, n, change=False):
+        return self.payto_for_path("%s/%s" % (n, 1 if change else 0))
+
+    def script_for_path(self, path):
         """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
 
         :param: path: the derivation path
@@ -69,7 +90,7 @@ class MultisigAccount:
         script = ScriptMultisig(self.num_sigs, secs)
         return script
 
-    def payto(self, path):
+    def payto_for_path(self, path):
         """Get the payto script for the path.  See also :meth:`.script`
 
         :param: path: the derivation path
@@ -77,6 +98,6 @@ class MultisigAccount:
         :return: the script
         :rtype: ScriptPayToScript
         """
-        script = self.script(path)
+        script = self.script_for_path(path)
         payto = ScriptPayToScript(hash160=encoding.hash160(script.script()))
         return payto

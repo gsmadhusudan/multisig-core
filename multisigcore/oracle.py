@@ -11,6 +11,7 @@ import uuid
 
 __author__ = 'sserrano, devrandom'
 
+
 class Error(Exception):
     pass
 
@@ -49,7 +50,7 @@ class Oracle(object):
                 raise Error("could not look up tx for %s" % (b2h(inp.previous_hash)))
             input_txs.append(input_tx)
             if input_chain_paths[i]:
-                redeem_script = self.account.script(input_chain_paths[i]).script()
+                redeem_script = self.account.script_for_path(input_chain_paths[i]).script()
                 input_scripts.append(redeem_script)
                 chain_paths.append(input_chain_paths[i])
                 fix_input_script(inp, redeem_script)
@@ -155,7 +156,7 @@ class Oracle(object):
                 {"delay": 0, "calls": calls}
             ]
         }
-        r['keys'] = self.public_keys
+        r['keys'] = self.account.keys
         body = json.dumps(r)
         url = self.url()
         response = requests.post(url, body, headers={'content-type': 'application/json'})
@@ -171,6 +172,7 @@ class Oracle(object):
             raise OracleError(response.content)
         else:
             raise Error("Unknown response " + response.status_code)
+
 
 def dummy_signature(sig_type):
     order = generator_secp256k1.order()
