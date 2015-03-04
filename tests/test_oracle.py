@@ -6,29 +6,21 @@ from pycoin.tx import Tx
 from multisigcore.hierarchy import AccountKey, MasterKey, MultisigAccount
 from pycoin.tx.pay_to import build_p2sh_lookup
 from pycoin.tx.tx_utils import LazySecretExponentDB
+from tests import *
 
 __author__ = 'devrandom'
 
 import unittest
 from multisigcore import Oracle, local_sign
 
-TEST_PATH = "0/0/1"
-
 class OracleTest(unittest.TestCase):
     def setUp(self):
         self.wallet_private_key = MasterKey.from_seed("aaa-2015-02-10".encode('utf8'))
-        self.recover_key = AccountKey.from_key("xpub661MyMwAqRbcGmRK6wKJrfMXoenZ86PMUfBWNvmmp5c51PyyzjY7yJL9venRUYqmSqNo7iGqHbVWkTVYzY2drw57vr45iHxV7NsAqF4ZWg5")
-        self.wallet_key = AccountKey.from_hwif("xpub661MyMwAqRbcFqtR38s6kVQudQxKpHzNJyWEXmz2TnuDoR8FpZR7EuL158B5QDaYvxCfp3LAEa8VwdtxNgKHNha4JKqGrqkzBGboJFwgyrR")
-        self.oracle_key = AccountKey.from_hwif("xpub68rQ8y4gfKeqG3sxQQE7uNwjnjcTiEZDQCrr2witfS3VrZ3QkeR2XuiQWUpdQRUVShcyVzjX2ZvDWHS2SZcZJXaGC7HybSPVMDXErbRRHwn")
         self.tx_db = dict()
         self.input_tx = Tx.tx_from_hex("0100000001d7e5d290d1363f9a3a1ee992d729f5e2f6938539e1eb6fd98ddd32f5211b66b8010000006a473044022043ac09592090ec32e75fe104aa97e87d31852d23ee17595659ea82e9e177822b0220727a37d1f93a088a99f907f924b92f2938b3a1e5093af32ee854382275fe06c1012103070454c3e8fea7c8e7e4a9c4d4a15e7e3088a0555e2ed303ec25d0f9bb0a75a6ffffffff02e09304000000000017a9141bbf6712630dd01fab4e70ac91a06925d138f27387d2906406000000001976a9149fe455808b8f32c84f4c96db7865cfb2475bffbc88ac00000000")
         self.tx_db[self.input_tx.hash()] = self.input_tx
-        self.account = MultisigAccount(keys=[self.wallet_key, self.recover_key, self.oracle_key])
+        self.account = make_multisig_account()
         self.oracle = Oracle(self.account, tx_db=self.tx_db)
-
-    def test_payto(self):
-        payto = self.account.payto_for_path(TEST_PATH)
-        self.assertEqual("34DjTcNWGReJV4xx7R1AWK7FTz3xMwMcjA", payto.address())
 
     def test_sign(self):
         # generated with `tx -i 34DjTcNWGReJV4xx7R1AWK7FTz3xMwMcjA  3Ph5UGYHCyvYFQifw76T8iqKL9EkGKDBMz/100000 -o tx.hex`
