@@ -9,7 +9,7 @@ from pycoin.tx.tx_utils import LazySecretExponentDB
 __author__ = 'devrandom'
 
 import unittest
-from digitaloracle import Oracle, local_sign
+from multisigcore import Oracle, local_sign
 from pycoin.key.BIP32Node import BIP32Node
 
 TEST_PATH = "0/0/1"
