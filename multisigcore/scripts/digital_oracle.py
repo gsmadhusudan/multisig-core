@@ -8,6 +8,7 @@ import textwrap
 
 import codecs
 import os
+from multisigcore.hierarchy import MultisigAccount
 
 from pycoin import encoding
 from pycoin.serialize import b2h, stream_to_bytes
@@ -16,7 +17,7 @@ from pycoin.key.BIP32Node import BIP32Node
 from pycoin.networks import NETWORK_NAMES
 from pycoin.tx import Tx
 from pycoin.services import get_tx_db
-from digitaloracle import Oracle
+from multisigcore import Oracle, local_sign
 from itertools import izip_longest
 
 
@@ -95,7 +96,8 @@ def main():
         if tx is None and key is None:
             print('could not understand item %s' % (item,))
 
-    oracle = Oracle(keys, tx_db=get_tx_db(), base_url=args.baseurl)
+    account = MultisigAccount(keys, complete=False)
+    oracle = Oracle(account, tx_db=get_tx_db(), base_url=args.baseurl)
 
     if args.command == 'dump':
         sub_keys = [key.subkey_for_path(path or "") for key, path in izip_longest(keys, args.inputpath)]
@@ -106,27 +108,27 @@ def main():
     elif args.command == 'address':
         oracle.get()
         print("* account keys")
-        print(oracle.all_keys())
+        print(account.keys)
         path = args.inputpath[0] if args.inputpath else ""
-        sub_keys = [key.subkey_for_path(path) for key in oracle.all_keys()]
+        sub_keys = [key.subkey_for_path(path) for key in account.keys]
         print("* child keys")
         for key in sub_keys:
             print(key.wallet_key(as_private=False))
-        payto = oracle.payto(path)
+        payto = account.payto_for_path(path)
         print("* address")
         print(payto.address(netcode=args.network))
     elif args.command == 'sign':
         oracle.get()
-        scripts = [oracle.script(path) for path in args.inputpath]
+        scripts = [account.script_for_path(path) for path in args.inputpath]
         change_paths = [None if path == '-' else path for path in args.changepath]
         for tx in txs:
             print(tx.id())
             print(b2h(stream_to_bytes(tx.stream)))
             sub_keys = [keys[0].subkey_for_path(path) for path in args.inputpath]
             # sign locally
-            sign(tx, scripts, sub_keys)
+            local_sign(tx, scripts, sub_keys)
             # have Oracle sign
-            result = oracle.sign(tx, args.inputpath, change_paths, spend_id=args.spendid)
+            result = oracle.sign_with_paths(tx, args.inputpath, change_paths, spend_id=args.spendid)
             print("Result:")
             print(result)
             if 'transaction' in result:
