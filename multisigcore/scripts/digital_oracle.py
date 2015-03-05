@@ -128,7 +128,7 @@ def main():
             # sign locally
             local_sign(tx, scripts, sub_keys)
             # have Oracle sign
-            result = oracle.sign(tx, args.inputpath, change_paths, spend_id=args.spendid)
+            result = oracle.sign_with_paths(tx, args.inputpath, change_paths, spend_id=args.spendid)
             print("Result:")
             print(result)
             if 'transaction' in result:

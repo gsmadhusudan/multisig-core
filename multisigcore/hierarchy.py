@@ -96,8 +96,14 @@ class MultisigAccount:
         :param: path: the derivation path
         :type: path: str
         :return: the script
-        :rtype: ScriptPayToScript
+        :rtype: LeafPayTo
         """
         script = self.script_for_path(path)
-        payto = ScriptPayToScript(hash160=encoding.hash160(script.script()))
+        payto = LeafPayTo(hash160=encoding.hash160(script.script()), path=path)
         return payto
+
+
+class LeafPayTo(ScriptPayToScript):
+    def __init__(self, hash160, path):
+        super(LeafPayTo, self).__init__(hash160)
+        self.path = path

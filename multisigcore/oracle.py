@@ -2,7 +2,7 @@ from __future__ import print_function
 from pycoin.tx import Tx
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
-from hierarchy import MultisigAccount, AccountKey
+from hierarchy import *
 from pycoin.tx.script.tools import *
 from pycoin.tx.script import der
 import json
@@ -72,7 +72,26 @@ class Oracle(object):
             req['spendId'] = spend_id
         return req
 
-    def sign(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
+    def sign(self, tx, input_leafs, output_leafs, spend_id=None):
+        """
+        Have the Oracle sign the transaction
+
+        :param tx: the transaction to be signed
+        :type tx: Tx
+        :param input_leafs: the input leaf payto for each input, or None if the input does not need to be signed
+        :type input_leafs: list[LeafPayTo or None]
+        :param output_leafs: the output leaf payto, or None if the output is not change
+        :type input_leafs: list[LeafPayTo or None]
+        :param spend_id: an additional hex ID to disambiguate sends to the same outputs
+        :type spend_id: str
+        :return: a dictionary with the transaction in 'transaction' if successful
+        :rtype: dict
+        """
+        input_chain_paths = [x.path if x else None for x in input_leafs]
+        output_chain_paths = [x.path if x else None for x in output_leafs]
+        self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id)
+
+    def sign_with_paths(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
         """
         Have the Oracle sign the transaction
 

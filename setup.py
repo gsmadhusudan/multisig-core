@@ -31,5 +31,8 @@ setup(
     install_requires=[
         'pycoin',
         'requests'
+    ],
+    tests_requires=[
+        'httmock'
     ]
 )

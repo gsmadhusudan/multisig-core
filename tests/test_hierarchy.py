@@ -9,7 +9,7 @@ class HierarchyTest(TestCase):
     def setUp(self):
         self.master_key = MasterKey.from_seed(h2b("000102030405060708090a0b0c0d0e0f"))
         self.master_key1 = MasterKey.from_seed(h2b("fffcf9f6f3f0edeae7e4e1dedbd8d5d2cfccc9c6c3c0bdbab7b4b1aeaba8a5a29f9c999693908d8a8784817e7b7875726f6c696663605d5a5754514e4b484542"))
-        self.account = make_multisig_account()
+        self.multisig_account = make_multisig_account()
 
     def test_master(self):
         self.assertEqual(self.master_key.as_text(), "xpub661MyMwAqRbcFtXgS5sYJABqqG9YLmC4Q1Rdap9gSE8NqtwybGhePY2gZ29ESFjqJoCu1Rupje8YtGqsefD265TMg7usUDFdp6W1EGMcet8")
@@ -32,7 +32,7 @@ class HierarchyTest(TestCase):
         l = a.leaf(0)
         self.assertEqual(l.address(), "1AGWXxRe7FwWJJ6k5uAfwcoA7Sov9AYNVK")
 
-    def test_payto(self):
-        payto = self.account.payto_for_path(TEST_PATH)
+    def test_multisig_payto(self):
+        payto = self.multisig_account.payto_for_path(TEST_PATH)
         self.assertEqual("34DjTcNWGReJV4xx7R1AWK7FTz3xMwMcjA", payto.address())
 
