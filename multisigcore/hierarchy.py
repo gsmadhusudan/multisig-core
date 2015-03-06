@@ -1,6 +1,7 @@
 from __future__ import print_function
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
+from pycoin.serialize import h2b
 from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 
 __author__ = 'devrandom'
@@ -24,6 +25,10 @@ class MasterKey(BIP32Node):
         return cls.from_master_secret(master_secret, netcode=netcode)
 
     @classmethod
+    def from_seed_hex(cls, master_secret_hex, netcode='BTC'):
+        return cls.from_seed(h2b(master_secret_hex), netcode)
+
+    @classmethod
     def from_key(cls, key):
         return cls.from_hwif(key)
 
@@ -38,6 +43,7 @@ class MasterKey(BIP32Node):
 
     def bip44_account(self, n, purpose=0, coin=0):
         return self.account_for_path("%sH/%sH/%sH" % (purpose, coin, n))
+
 
 
 class MultisigAccount:
