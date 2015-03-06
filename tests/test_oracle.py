@@ -75,4 +75,22 @@ class OracleTest(unittest.TestCase):
             self.assertEqual("01000000019cb9e92cd3f91087852382150f19b5d99259be47106d860055d1afb81100222500000000b600483045022100a90e9e7e4ddc7de0e8f39166e40819a8c99a1b68389cf0e6e3518d592e3e271502201eab29e5069988188886827a31248faacecb723c28da228626b1e77f080a2e7701004c69522102fa0e06db47e8924274c670503238db30367d11ccaca00d385ac370fed93578d2210379014532a465b19fcf1ead9921488274821fd58178542b2aa54007bcc5a29d34210381c235ee18d9e85e3b28200200df3a2276c6b9473f18946ef8740ccaebfa4b1e53aeffffffff02905f01000000000017a914f155ba65bdb30930da320ec51a0d6c913dfce06b87400d03000000000017a9141bbf6712630dd01fab4e70ac91a06925d138f2738700000000",
                              req['transaction']['bytes'])
 
+    def test_create(self):
+        new_account = make_incomplete_multisig_account()
+        oracle = Oracle(new_account)
+        calls = ['email']
+        parameters = {
+            "levels": [
+                {"asset": "BTC", "period": 60, "value": 0.001},
+                {"delay": 0, "calls": calls}
+            ]
+        }
+        self._request = None
+        def digitaloracle_mock(url, request):
+            self._request = request
+            return json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z", "keys": {"default": [oracle_key.hwif()]}})
 
+        with HTTMock(digitaloracle_mock):
+            oracle.create(parameters, email="a@b.com")
+            self.assertTrue(new_account.complete)
+            self.assertEqual(self.account.address(111), new_account.address(111))

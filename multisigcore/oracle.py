@@ -147,7 +147,7 @@ class Oracle(object):
         else:
             raise Error("Unknown response " + response.status_code)
 
-    def create(self, email=None, phone=None):
+    def create(self, parameters, email=None, phone=None):
         """
         Create an Oracle keychain on server and retrieve the oracle public key
 
@@ -162,20 +162,12 @@ class Oracle(object):
         if self.manager:
             r['managerUsername'] = self.manager
         r['pii'] = {}
-        calls = []
         if email:
             r['pii']['email'] = email
-            calls.append('email')
         if email:
             r['pii']['phone'] = phone
-            calls.append('phone')
-        r['parameters'] = {
-            "levels": [
-                {"asset": "BTC", "period": 60, "value": 0.001},
-                {"delay": 0, "calls": calls}
-            ]
-        }
-        r['keys'] = self.account.keys
+        r['parameters'] = parameters
+        r['keys'] = [str(k) for k in self.account.keys]
         body = json.dumps(r)
         url = self.url()
         response = requests.post(url, body, headers={'content-type': 'application/json'})
@@ -190,6 +182,7 @@ class Oracle(object):
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
+            print(body)
             raise Error("Unknown response " + response.status_code)
 
 

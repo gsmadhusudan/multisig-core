@@ -104,7 +104,14 @@ def main():
         for key in sub_keys:
             print(key.wallet_key(as_private=False))
     elif args.command == 'create':
-        oracle.create(email=args.email)
+        calls = ['email']
+        parameters = {
+            "levels": [
+                {"asset": "BTC", "period": 60, "value": 0.001},
+                {"delay": 0, "calls": calls}
+            ]
+        }
+        oracle.create(parameters, email=args.email)
     elif args.command == 'address':
         oracle.get()
         print("* account keys")
@@ -136,6 +143,7 @@ def main():
                 print(b2h(stream_to_bytes(result['transaction'].stream)))
     else:
         print('unknown command %s' % (args.command,), file=sys.stderr)
+
 
 if __name__ == '__main__':
     main()

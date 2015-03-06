@@ -58,7 +58,7 @@ class MultisigAccount:
         """
         self.keys = keys
         self.public_keys = [str(key.wallet_key(as_private=False)) for key in self.keys]
-        self.num_sigs = num_sigs if num_sigs else len(keys) - 1
+        self.num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
         self.complete = complete
 
     def add_key(self, key):
