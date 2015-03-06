@@ -10,3 +10,6 @@ TEST_PATH = "0/0/1"
 
 def make_multisig_account():
     return MultisigAccount(keys=[wallet_key, recover_key, oracle_key])
+
+def make_incomplete_multisig_account():
+    return MultisigAccount(keys=[wallet_key, recover_key], complete=False)

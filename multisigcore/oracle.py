@@ -1,4 +1,6 @@
 from __future__ import print_function
+import dateutil.tz
+import dateutil.parser
 from pycoin.tx import Tx
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
@@ -19,6 +21,30 @@ class Error(Exception):
 class OracleError(Error):
     pass
 
+class OracleInternalError(Error):
+    pass
+
+class OracleDeferralException(Exception):
+    """Deferred transaction due to required verifications and/or delay"""
+
+    def __init__(self, verifications, until):
+        self._verifications = verifications
+        ":type: list of str"
+        self._until = until
+        ":type: datetime.datetime"
+
+    @property
+    def verifications(self):
+        """a list of required verifications, such as 'code' (SMS code) and 'otp'
+        :returns list of str"""
+        return self._verifications
+
+    @property
+    def until(self):
+        """if there a delay is required, this will contain the time until the delay expires
+        :returns datetime.datetime"""
+        return self._until
+
 
 class Oracle(object):
     """Keep track of a single Oracle account, including user keys and oracle master public key"""
@@ -27,19 +53,34 @@ class Oracle(object):
         """
         Create an Oracle object
 
-        :param account: multisig account
+        :param account: multisig account, may be incomplete if the oracle key is not known yet (pending create/get)
         :type account: MultisigAccount
         :param tx_db: lookup database for transactions - see pycoin.services.get_tx_db()
         :param manager: the manager identifier for this wallet (only used on creation for now)
         """
-        self.account = account
+        self._account = account
         self.manager = manager
-        self.wallet_agent = 'digitaloracle-pycoin-0.01'
+        self._wallet_agent = 'multisig-core-0.01'
         self.tx_db = tx_db
         self.base_url = base_url or 'https://s.digitaloracle.co/'
         self.num_oracle_keys = num_oracle_keys
 
-    def create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx):
+    @property
+    def account(self):
+        """The multisig account.  May be incomplete if we did not yet create or get the oracle key.
+        :returns hierarchy.MultisigAccount"""
+        return self._account
+
+    @property
+    def wallet_agent(self):
+        return self._wallet_agent
+
+    @wallet_agent.getter
+    def set_wallet_agent(self, agent):
+        self._wallet_agent = agent
+
+    def _create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx, verifications=None):
+        """:nodoc:"""
         # Have the Oracle sign the tx
         chain_paths = []
         input_scripts = []
@@ -50,7 +91,7 @@ class Oracle(object):
                 raise Error("could not look up tx for %s" % (b2h(inp.previous_hash)))
             input_txs.append(input_tx)
             if input_chain_paths[i]:
-                redeem_script = self.account.script_for_path(input_chain_paths[i]).script()
+                redeem_script = self._account.script_for_path(input_chain_paths[i]).script()
                 input_scripts.append(redeem_script)
                 chain_paths.append(input_chain_paths[i])
                 fix_input_script(inp, redeem_script)
@@ -58,21 +99,23 @@ class Oracle(object):
                 input_scripts.append(None)
                 chain_paths.append(None)
         req = {
-            "walletAgent": self.wallet_agent,
+            "walletAgent": self._wallet_agent,
             "transaction": {
                 "bytes": b2h(stream_to_bytes(tx.stream)),
                 "inputScripts": [(b2h(script) if script else None) for script in input_scripts],
                 "inputTransactions": [b2h(stream_to_bytes(tx.stream)) for tx in input_txs],
                 "chainPaths": chain_paths,
                 "outputChainPaths": output_chain_paths,
-                "masterKeys": self.account.public_keys[0:-self.num_oracle_keys],
+                "masterKeys": self._account.public_keys[0:-self.num_oracle_keys],
             }
         }
         if spend_id:
             req['spendId'] = spend_id
+        if verifications:
+            req['verifications'] = verifications
         return req
 
-    def sign(self, tx, input_leafs, output_leafs, spend_id=None):
+    def sign(self, tx, input_leafs, output_leafs, spend_id=None, verifications=None):
         """
         Have the Oracle sign the transaction
 
@@ -84,14 +127,16 @@ class Oracle(object):
         :type input_leafs: list[LeafPayTo or None]
         :param spend_id: an additional hex ID to disambiguate sends to the same outputs
         :type spend_id: str
+        :param verifications: an optional dictionary with authorization code for each verification type.  Keys include "otp" and "code" (for SMS).
+        :type dict of [str, str]
         :return: a dictionary with the transaction in 'transaction' if successful
         :rtype: dict
         """
         input_chain_paths = [x.path if x else None for x in input_leafs]
         output_chain_paths = [x.path if x else None for x in output_leafs]
-        self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id)
+        self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id, verifications)
 
-    def sign_with_paths(self, tx, input_chain_paths, output_chain_paths, spend_id=None):
+    def sign_with_paths(self, tx, input_chain_paths, output_chain_paths, spend_id=None, verifications=None):
         """
         Have the Oracle sign the transaction
 
@@ -103,14 +148,18 @@ class Oracle(object):
         :type output_chain_paths: list[str or None]
         :param spend_id: an additional hex ID to disambiguate sends to the same outputs
         :type spend_id: str
+        :param verifications: an optional dictionary with authorization code for each verification type.  Keys include "otp" and "code" (for SMS).
+        :type dict of [str, str]
         :return: a dictionary with the transaction in 'transaction' if successful
         :rtype: dict
         """
-        req = self.create_oracle_request(input_chain_paths, output_chain_paths, spend_id, tx)
+        req = self._create_oracle_request(input_chain_paths, output_chain_paths, spend_id, tx, verifications)
         body = json.dumps(req)
-        url = self.url() + "/transactions"
-        print(body)
+        url = self._url() + "/transactions"
+        #print(body)
         response = requests.post(url, body, headers={'content-type': 'application/json'})
+        if response.status_code > 500:
+            raise OracleInternalError(response.content)
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
             if 'transaction' in result:
@@ -119,77 +168,95 @@ class Oracle(object):
                 'transaction': tx,
                 'now': result['now'],
                 'spendId': result['spendId'],
-                'deferral': result['deferral']
+                'deferral': result.get('deferral')
             }
+        if result.get('result') == 'deferred':
+            deferral = result['deferral']
+            until = None
+            if deferral and deferral['reason'] == 'delay':
+                tzlocal = dateutil.tz.tzlocal()
+                until = dateutil.parser.parse(deferral['until']).astimezone(tzlocal)
+                #remain = int((until - datetime.datetime.now(tzlocal)).total_seconds())
+            raise OracleDeferralException(deferral.get('verifications'), until)
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
-            raise Error("Unknown response %d" % (response.status_code,))
+            raise IOError("Unknown response %d" % (response.status_code,))
 
-    def url(self):
-        account_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self.account.public_keys[0])))
+    def _url(self):
+        account_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self._account.public_keys[0])))
         url = self.base_url + "keychains/" + account_id
         return url
 
     def get(self):
         """Retrieve the oracle public key from the Oracle"""
-        if self.account.complete:
+        if self._account.complete:
             raise Exception("the account for this Oracle is already complete")
-        url = self.url()
+        url = self._url()
         response = requests.get(url)
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
-            self.account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
+            self._account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
             self.num_oracle_keys = len(result['keys']['default'])
-            self.account.set_complete()
+            self._account.set_complete()
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
             raise Error("Unknown response " + response.status_code)
 
-    def create(self, email=None, phone=None):
+    def create(self, parameters, email=None, phone=None):
         """
-        Create an Oracle keychain on server and retrieve the oracle public key
+        Create an Oracle keychain on server and retrieve the oracle public key.
 
         :param email: the email contact
         :type email: str or unicode
         :param phone: the phone contact
         :type phone: str or unicode
+
+        Example security parameters::
+            "parameters": {
+                "levels": [ {
+                    "asset": "BTC",
+                    "period": 3600,
+                    "value": 1.0
+                }, {
+                    "delay": 0,
+                    "calls": ['phone', 'email']
+                }, ],
+                "authenticator": {
+                    "firstValue": "123456",
+                    "secret": "aaaaaaaaaaaaaaaaaaaaaaaa",
+                    "type": "totp"
+                }
+           }
         """
-        if self.account.complete:
+        if self._account.complete:
             raise Exception("account already complete")
-        r = {'walletAgent': self.wallet_agent, 'rulesetId': 'default'}
+        r = {'walletAgent': self._wallet_agent, 'rulesetId': 'default'}
         if self.manager:
             r['managerUsername'] = self.manager
         r['pii'] = {}
-        calls = []
         if email:
             r['pii']['email'] = email
-            calls.append('email')
         if email:
             r['pii']['phone'] = phone
-            calls.append('phone')
-        r['parameters'] = {
-            "levels": [
-                {"asset": "BTC", "period": 60, "value": 0.001},
-                {"delay": 0, "calls": calls}
-            ]
-        }
-        r['keys'] = self.account.keys
+        r['parameters'] = parameters
+        r['keys'] = [str(k) for k in self._account.keys]
         body = json.dumps(r)
-        url = self.url()
+        url = self._url()
         response = requests.post(url, body, headers={'content-type': 'application/json'})
 
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
-            self.account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
+            self._account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
             self.num_oracle_keys = len(result['keys']['default'])
-            self.account.set_complete()
+            self._account.set_complete()
         elif response.status_code == 400 and result.get('error', None) == 'already exists':
             raise OracleError("already exists")
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
+            print(body)
             raise Error("Unknown response " + response.status_code)
 
 

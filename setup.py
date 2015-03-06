@@ -1,11 +1,13 @@
+#!/usr/bin/env python
+
 from setuptools import setup
 
 setup(
-    name='digitaloracle-pycoin',
+    name='multisig-core',
     version='0.1',
     packages=[
-        'digitaloracle',
-        'digitaloracle.scripts',
+        'multisigcore',
+        'multisigcore.scripts',
     ],
     url='https://cryptocorp.co/api',
     license='http://opensource.org/licenses/MIT',
@@ -14,9 +16,9 @@ setup(
     entry_points={
         'console_scripts':
             [
-                'digital_oracle = digitaloracle.scripts.digital_oracle:main',
-                'decode_script = digitaloracle.scripts.decode_script:main',
-                'decode_tx_scripts = digitaloracle.scripts.decode_tx_scripts:main',
+                'digital_oracle = multisigcore.scripts.digital_oracle:main',
+                'decode_script = multisigcore.scripts.decode_script:main',
+                'decode_tx_scripts = multisigcore.scripts.decode_tx_scripts:main',
             ]
     },
     description='The CryptoCorp digitaloracle API for pycoin ',
@@ -32,7 +34,8 @@ setup(
         'pycoin',
         'requests'
     ],
-    tests_requires=[
+    tests_require=[
         'httmock'
-    ]
+    ],
+    test_suite='tests',
 )

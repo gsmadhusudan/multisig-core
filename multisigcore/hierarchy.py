@@ -1,6 +1,7 @@
 from __future__ import print_function
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
+from pycoin.serialize import h2b
 from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 
 __author__ = 'devrandom'
@@ -24,6 +25,10 @@ class MasterKey(BIP32Node):
         return cls.from_master_secret(master_secret, netcode=netcode)
 
     @classmethod
+    def from_seed_hex(cls, master_secret_hex, netcode='BTC'):
+        return cls.from_seed(h2b(master_secret_hex), netcode)
+
+    @classmethod
     def from_key(cls, key):
         return cls.from_hwif(key)
 
@@ -40,6 +45,7 @@ class MasterKey(BIP32Node):
         return self.account_for_path("%sH/%sH/%sH" % (purpose, coin, n))
 
 
+
 class MultisigAccount:
     def __init__(self, keys, num_sigs=None, complete=True):
         """
@@ -52,7 +58,7 @@ class MultisigAccount:
         """
         self.keys = keys
         self.public_keys = [str(key.wallet_key(as_private=False)) for key in self.keys]
-        self.num_sigs = num_sigs if num_sigs else len(keys) - 1
+        self.num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
         self.complete = complete
 
     def add_key(self, key):
@@ -75,6 +81,9 @@ class MultisigAccount:
 
     def leaf_payto(self, n, change=False):
         return self.payto_for_path("%s/%s" % (n, 1 if change else 0))
+
+    def address(self, n, change=False, netcode='BTC'):
+        return self.leaf_payto(n, change).address(netcode)
 
     def script_for_path(self, path):
         """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
