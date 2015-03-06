@@ -82,6 +82,9 @@ class MultisigAccount:
     def leaf_payto(self, n, change=False):
         return self.payto_for_path("%s/%s" % (n, 1 if change else 0))
 
+    def address(self, n, change=False, netcode='BTC'):
+        return self.leaf_payto(n, change).address(netcode)
+
     def script_for_path(self, path):
         """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
 

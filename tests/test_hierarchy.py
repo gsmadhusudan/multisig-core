@@ -37,3 +37,6 @@ class HierarchyTest(TestCase):
         payto = self.multisig_account.payto_for_path(TEST_PATH)
         self.assertEqual("34DjTcNWGReJV4xx7R1AWK7FTz3xMwMcjA", payto.address())
 
+    def test_multisig_address(self):
+        self.assertEqual("3MhrgJ9BtL3GTsUU6EqAqDGKdUAv8C15EN", self.multisig_account.address(0))
+
