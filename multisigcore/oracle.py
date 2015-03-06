@@ -109,7 +109,7 @@ class Oracle(object):
         req = self.create_oracle_request(input_chain_paths, output_chain_paths, spend_id, tx)
         body = json.dumps(req)
         url = self.url() + "/transactions"
-        print(body)
+        #print(body)
         response = requests.post(url, body, headers={'content-type': 'application/json'})
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
