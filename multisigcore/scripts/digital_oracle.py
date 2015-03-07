@@ -28,6 +28,8 @@ def main():
     )
     parser.add_argument('-e', '--email',
                         help='e-mail for create')
+    parser.add_argument('-p', '--phone',
+                        help='phone number for create - in the format +14155551212')
     parser.add_argument('-n', '--network',
                         default='BTC', choices=NETWORK_NAMES)
     parser.add_argument('-i', "--inputpath",
@@ -40,6 +42,8 @@ def main():
                         help='an additional hex string to disambiguate spends to the same address')
     parser.add_argument('-u', "--baseurl",
                         help='the API endpoint, defaults to the sandbox - https://s.digitaloracle.co/')
+    parser.add_argument('-v', "--verbose", default=0, action="count",
+                        help="Verbosity, use more -v flags for more verbosity")
     parser.add_argument('command',
                         help="""a command""")
     parser.add_argument('item',
@@ -98,36 +102,42 @@ def main():
 
     account = MultisigAccount(keys, complete=False)
     oracle = Oracle(account, tx_db=get_tx_db(), base_url=args.baseurl)
+    oracle.verbose = args.verbose
 
     if args.command == 'dump':
         sub_keys = [key.subkey_for_path(path or "") for key, path in izip_longest(keys, args.inputpath)]
         for key in sub_keys:
             print(key.wallet_key(as_private=False))
     elif args.command == 'create':
-        calls = ['email']
+        calls = []
+        if args.email:
+            calls.append('email')
+        if args.phone:
+            calls.append('phone')
         parameters = {
             "levels": [
                 {"asset": "BTC", "period": 60, "value": 0.001},
                 {"delay": 0, "calls": calls}
             ]
         }
-        oracle.create(parameters, email=args.email)
+        oracle.create(parameters, email=args.email, phone=args.phone)
     elif args.command == 'address':
         oracle.get()
-        print("* account keys")
-        print(account.keys)
         path = args.inputpath[0] if args.inputpath else ""
         sub_keys = [key.subkey_for_path(path) for key in account.keys]
-        print("* child keys")
-        for key in sub_keys:
-            print(key.wallet_key(as_private=False))
         payto = account.payto_for_path(path)
-        print("* address")
+        if args.verbose > 0:
+            print("* account keys")
+            print(account.keys)
+            print("* child keys")
+            for key in sub_keys:
+                print(key.wallet_key(as_private=False))
+            print("* address")
         print(payto.address(netcode=args.network))
     elif args.command == 'sign':
         oracle.get()
         scripts = [account.script_for_path(path) for path in args.inputpath]
-        change_paths = [None if path == '-' else path for path in args.changepath]
+        change_paths = [None if path == '-' else path for path in (args.changepath or [])]
         for tx in txs:
             print(tx.id())
             print(b2h(stream_to_bytes(tx.stream)))
