@@ -16,7 +16,7 @@ Examples
     digital_oracle -i 0/0/123 address P:aaa xpub...
        # shows deposit address
 
-    tx -i SOURCE_ADDRESS DESTINATION_ADDRESS -o tx.bin
+    tx -i SOURCE_ADDRESS DESTINATION_ADDRESS/100000 CHANGE_ADDRESS -o tx.bin
 
     digital_oracle sign P:aaa xpub... tx.bin -i 0/0/123
        # signs and shows tx hex)

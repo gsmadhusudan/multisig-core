@@ -124,9 +124,9 @@ def main():
     elif args.command == 'address':
         oracle.get()
         path = args.inputpath[0] if args.inputpath else ""
-        sub_keys = [key.subkey_for_path(path) for key in account.keys]
         payto = account.payto_for_path(path)
         if args.verbose > 0:
+            sub_keys = [key.subkey_for_path(path) for key in account.keys]
             print("* account keys")
             print(account.keys)
             print("* child keys")

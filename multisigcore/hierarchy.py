@@ -93,6 +93,8 @@ class MultisigAccount:
         :return: the script
         :rtype: ScriptMultisig
         """
+        if not self.complete:
+            raise Exception("account not complete")
         subkeys = [key.subkey_for_path(path or "") for key in self.keys]
         secs = [key.sec() for key in subkeys]
         secs.sort()
