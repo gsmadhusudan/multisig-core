@@ -24,14 +24,24 @@ class OracleError(Error):
 class OracleInternalError(Error):
     pass
 
-class OracleDeferralException(Exception):
+class OracleException(Exception):
+    pass
+
+class OracleRejectionException(OracleError):
+    """Rejected transaction due to user cancel or business rule violation"""
+    pass
+
+class OracleLockoutException(OracleError):
+    """Rejected transaction due to account or keychain being locked out due to user request or other reason"""
+    pass
+
+class OracleDeferralException(OracleException):
     """Deferred transaction due to required verifications and/or delay"""
 
-    def __init__(self, verifications, until):
+    def __init__(self, verifications, until, spend_id):
         self._verifications = verifications
-        ":type: list of str"
         self._until = until
-        ":type: datetime.datetime"
+        self._spend_id = spend_id
 
     @property
     def verifications(self):
@@ -44,6 +54,18 @@ class OracleDeferralException(Exception):
         """if there a delay is required, this will contain the time until the delay expires
         :returns datetime.datetime"""
         return self._until
+
+    @property
+    def spend_id(self):
+        """the Oracle id for this spend
+        :returns str"""
+        return self._spend_id
+
+
+class SignatureResult(dict):
+    def __init__(self, value):
+        super(SignatureResult, self).__init__(**value)
+        self.__dict__ = self
 
 
 class Oracle(object):
@@ -64,6 +86,7 @@ class Oracle(object):
         self.tx_db = tx_db
         self.base_url = base_url or 'https://s.digitaloracle.co/'
         self.num_oracle_keys = num_oracle_keys
+        self.verbose = 0
 
     @property
     def account(self):
@@ -90,7 +113,7 @@ class Oracle(object):
             if input_tx is None:
                 raise Error("could not look up tx for %s" % (b2h(inp.previous_hash)))
             input_txs.append(input_tx)
-            if input_chain_paths[i]:
+            if input_chain_paths[i] is not None:
                 redeem_script = self._account.script_for_path(input_chain_paths[i]).script()
                 input_scripts.append(redeem_script)
                 chain_paths.append(input_chain_paths[i])
@@ -134,7 +157,7 @@ class Oracle(object):
         """
         input_chain_paths = [x.path if x else None for x in input_leafs]
         output_chain_paths = [x.path if x else None for x in output_leafs]
-        self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id, verifications)
+        return self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id, verifications)
 
     def sign_with_paths(self, tx, input_chain_paths, output_chain_paths, spend_id=None, verifications=None):
         """
@@ -156,20 +179,22 @@ class Oracle(object):
         req = self._create_oracle_request(input_chain_paths, output_chain_paths, spend_id, tx, verifications)
         body = json.dumps(req)
         url = self._url() + "/transactions"
-        #print(body)
+        if self.verbose > 0:
+            print(body)
         response = requests.post(url, body, headers={'content-type': 'application/json'})
-        if response.status_code > 500:
+        if response.status_code >= 500:
             raise OracleInternalError(response.content)
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
+            tx = None
             if 'transaction' in result:
                 tx = Tx.tx_from_hex(result['transaction']['bytes'])
-            return {
+            return SignatureResult({
                 'transaction': tx,
                 'now': result['now'],
-                'spendId': result['spendId'],
+                'spend_id': result['spendId'],
                 'deferral': result.get('deferral')
-            }
+            })
         if result.get('result') == 'deferred':
             deferral = result['deferral']
             until = None
@@ -177,7 +202,11 @@ class Oracle(object):
                 tzlocal = dateutil.tz.tzlocal()
                 until = dateutil.parser.parse(deferral['until']).astimezone(tzlocal)
                 #remain = int((until - datetime.datetime.now(tzlocal)).total_seconds())
-            raise OracleDeferralException(deferral.get('verifications'), until)
+            raise OracleDeferralException(deferral.get('verifications'), until, result['spendId'])
+        elif result.get('result') == 'rejected':
+            raise OracleRejectionException()
+        elif result.get('result') == 'locked':
+            raise OracleLockoutException()
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
@@ -241,7 +270,7 @@ class Oracle(object):
         if email:
             r['pii']['phone'] = phone
         r['parameters'] = parameters
-        r['keys'] = [str(k) for k in self._account.keys]
+        r['keys'] = [k.hwif() for k in self._account.keys]
         body = json.dumps(r)
         url = self._url()
         response = requests.post(url, body, headers={'content-type': 'application/json'})
@@ -257,7 +286,8 @@ class Oracle(object):
             raise OracleError(response.content)
         else:
             print(body)
-            raise Error("Unknown response " + response.status_code)
+            print(response.content)
+            raise Error("Unknown response %d" % (response.status_code,))
 
 
 def dummy_signature(sig_type):
