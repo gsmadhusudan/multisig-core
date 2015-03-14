@@ -20,6 +20,7 @@ class AccountKey(BIP32Node):
 
 
 class MasterKey(BIP32Node):
+    """Master key (m or M)"""
     @classmethod
     def from_seed(cls, master_secret, netcode='BTC'):
         return cls.from_master_secret(master_secret, netcode=netcode)
@@ -44,6 +45,19 @@ class MasterKey(BIP32Node):
     def bip44_account(self, n, purpose=0, coin=0):
         return self.account_for_path("%sH/%sH/%sH" % (purpose, coin, n))
 
+
+class ElectrumMasterKey(BIP32Node):
+    """Electrum 'Master' key (m/0' or M/0').  Normally used for external Electrum keychains that are
+    participating in a multisig relationship"""
+    @classmethod
+    def from_key(cls, key):
+        return cls.from_hwif(key)
+
+    def account_for_path(self, path):
+        return AccountKey.from_key(self.subkey_for_path(path).hwif())
+
+    def electrum_account(self, n):
+        return self.account_for_path("%s" % (n,))
 
 
 class MultisigAccount:
