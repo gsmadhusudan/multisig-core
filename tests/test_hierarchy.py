@@ -1,6 +1,6 @@
 from unittest import TestCase
 from pycoin.serialize import h2b
-from multisigcore.hierarchy import MasterKey
+from multisigcore.hierarchy import MasterKey, ElectrumMasterKey
 from tests import *
 
 __author__ = 'devrandom'
@@ -32,6 +32,10 @@ class HierarchyTest(TestCase):
         a = m.electrum_account(0)
         l = a.leaf(0)
         self.assertEqual(l.address(), "1AGWXxRe7FwWJJ6k5uAfwcoA7Sov9AYNVK")
+        # Simulate generation of an Electrum master public key for the 1of1 hierarchy
+        em = ElectrumMasterKey.from_key(m.account_for_path("0H").hwif())
+        a1 = em.electrum_account(0)
+        self.assertEqual(a.hwif(), a1.hwif())
 
     def test_multisig_payto(self):
         payto = self.multisig_account.payto_for_path(TEST_PATH)
