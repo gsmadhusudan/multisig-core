@@ -231,7 +231,7 @@ class Oracle(object):
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
-            raise Error("Unknown response " + response.status_code)
+            raise Error("Unknown response %d" % (response.status_code,))
 
     def create(self, parameters, email=None, phone=None):
         """
