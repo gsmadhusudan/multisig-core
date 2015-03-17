@@ -6,7 +6,7 @@ __author__ = 'devrandom'
 
 from pycoin.tx.pay_to import build_p2sh_lookup
 from pycoin.tx.tx_utils import LazySecretExponentDB
-from oracle import Oracle
+from .oracle import Oracle
 
 def local_sign(tx, scripts, keys):
     """

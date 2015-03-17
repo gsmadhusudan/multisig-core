@@ -4,7 +4,7 @@ import dateutil.parser
 from pycoin.tx import Tx
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
-from hierarchy import *
+from .hierarchy import *
 from pycoin.tx.script.tools import *
 from pycoin.tx.script import der
 import json
