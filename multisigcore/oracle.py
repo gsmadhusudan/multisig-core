@@ -35,6 +35,10 @@ class OracleLockoutException(OracleError):
     """Rejected transaction due to account or keychain being locked out due to user request or other reason"""
     pass
 
+class OracleUnknownKeychainException(OracleException):
+    """Got error 404 on oracle /keychains/<uuid>"""
+    pass
+
 class OracleDeferralException(OracleException):
     """Deferred transaction due to required verifications and/or delay"""
 
@@ -230,6 +234,8 @@ class Oracle(object):
             self._account.set_complete()
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
+        elif response.status_code == 404:
+            raise OracleUnknownKeychainException("No keychain found on %s" % (url,))
         else:
             raise Error("Unknown response %d" % (response.status_code,))
 
