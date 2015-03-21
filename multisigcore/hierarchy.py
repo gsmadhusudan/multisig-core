@@ -61,7 +61,7 @@ class ElectrumMasterKey(BIP32Node):
 
 
 class MultisigAccount:
-    def __init__(self, keys, num_sigs=None, complete=True):
+    def __init__(self, keys, num_sigs=None, sort=True, complete=True):
         """
         Create an Oracle object
 
@@ -74,6 +74,7 @@ class MultisigAccount:
         self.public_keys = [str(key.wallet_key(as_private=False)) for key in self.keys]
         self.num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
         self.complete = complete
+        self.sort = sort
 
     def add_key(self, key):
         if self.complete:
@@ -111,7 +112,8 @@ class MultisigAccount:
             raise Exception("account not complete")
         subkeys = [key.subkey_for_path(path or "") for key in self.keys]
         secs = [key.sec() for key in subkeys]
-        secs.sort()
+        if self.sort:
+            secs.sort()
         script = ScriptMultisig(self.num_sigs, secs)
         return script
 

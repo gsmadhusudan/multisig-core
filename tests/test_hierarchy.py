@@ -40,7 +40,16 @@ class HierarchyTest(TestCase):
     def test_multisig_payto(self):
         payto = self.multisig_account.payto_for_path(TEST_PATH)
         self.assertEqual("34DjTcNWGReJV4xx7R1AWK7FTz3xMwMcjA", payto.address())
+        uma = make_unsorted_multisig_account()
+        payto = uma.payto_for_path(TEST_PATH)
+        self.assertEqual("3EyjKmfhbcrBHUCi9a7Qg8NYcMBK27aaDa", payto.address())
 
     def test_multisig_address(self):
+        uma = make_unsorted_multisig_account()
         self.assertEqual("3MhrgJ9BtL3GTsUU6EqAqDGKdUAv8C15EN", self.multisig_account.address(0))
+        # Happens to already be sorted
+        self.assertEqual("3MhrgJ9BtL3GTsUU6EqAqDGKdUAv8C15EN", uma.address(0))
+
+        self.assertEqual("3NgaSSt2qhSY28viYuYQQkmP2K6KuU2MXj", self.multisig_account.address(1))
+        self.assertEqual("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", uma.address(1))
 
