@@ -1,6 +1,7 @@
 import io
 import json
-from multisigcore.oracle import OracleError, OracleDeferralException, OracleRejectionException, OracleLockoutException
+from multisigcore.oracle import OracleError, OracleDeferralException, OracleRejectionException, OracleLockoutException, \
+    PersonalInformation
 
 from pycoin.serialize import h2b
 from pycoin.tx import Tx
@@ -178,11 +179,26 @@ class OracleTest(unittest.TestCase):
             ]
         }
         self._request = None
+
         def digitaloracle_mock(url, request):
             self._request = request
             return json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z", "keys": {"default": [oracle_key.hwif()]}})
 
         with HTTMock(digitaloracle_mock):
-            oracle.create(parameters, email="a@b.com")
+            personal_info = PersonalInformation(email="a@b.com")
+            oracle.create(parameters, personal_info)
             self.assertTrue(new_account.complete)
             self.assertEqual(self.account.address(111), new_account.address(111))
+
+    def test_verify(self):
+        new_account = make_incomplete_multisig_account()
+        oracle = Oracle(new_account)
+        calls = ['email']
+        self._request = None
+        def digitaloracle_mock(url, request):
+            self._request = request
+            return json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z"})
+
+        with HTTMock(digitaloracle_mock):
+            personal_info = PersonalInformation(email="a@b.com", phone="+14155551212")
+            oracle.verify_personal_information(personal_info, call="phone", callback="http://a.com/")

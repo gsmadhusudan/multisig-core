@@ -21,23 +21,41 @@ class Error(Exception):
 class OracleError(Error):
     pass
 
+
 class OracleInternalError(Error):
     pass
 
+
 class OracleException(Exception):
     pass
+
 
 class OracleRejectionException(OracleError):
     """Rejected transaction due to user cancel or business rule violation"""
     pass
 
+
 class OracleLockoutException(OracleError):
     """Rejected transaction due to account or keychain being locked out due to user request or other reason"""
     pass
 
+
 class OracleUnknownKeychainException(OracleException):
     """Got error 404 on oracle /keychains/<uuid>"""
     pass
+
+
+class OracleAccountExistsException(OracleException):
+    """Tried to create account, but it exists"""
+    pass
+
+
+class OracleCannotCallException(OracleException):
+    """Cannot place a call during verifyPii with reason given in message.
+    Wait for a callback / websocket response before trying to call.
+    """
+    pass
+
 
 class OracleDeferralException(OracleException):
     """Deferred transaction due to required verifications and/or delay"""
@@ -70,6 +88,30 @@ class SignatureResult(dict):
     def __init__(self, value):
         super(SignatureResult, self).__init__(**value)
         self.__dict__ = self
+
+
+class PersonalInformation(object):
+    def __init__(self, phone=None, email=None, phone_code_sms=None, phone_force_voice=None):
+        self._phone = phone
+        self._email = email
+        self._phone_code_sms = phone_code_sms
+        self._phone_force_voice = phone_force_voice
+
+    @property
+    def phone(self):
+        return self._phone
+
+    @property
+    def email(self):
+        return self._email
+
+    @property
+    def phone_code_sms(self):
+        return self._phone_force_voice
+
+    @property
+    def phone_force_voice(self):
+        return self._phone_force_voice
 
 
 class Oracle(object):
@@ -239,14 +281,25 @@ class Oracle(object):
         else:
             raise Error("Unknown response %d" % (response.status_code,))
 
-    def create(self, parameters, email=None, phone=None):
+    def populate_pii(self, personal_info):
+        pii = {}
+        if personal_info.email:
+            pii['email'] = personal_info.email
+        if personal_info.phone:
+            pii['phone'] = personal_info.phone
+        if personal_info.phone_force_voice:
+            pii['phone_force_voice'] = "1"
+        if personal_info.phone_code_sms:
+            pii['phone_code_sms'] = personal_info.phone_code_sms
+        return pii
+
+    def create(self, parameters, personal_info):
         """
         Create an Oracle keychain on server and retrieve the oracle public key.
 
-        :param email: the email contact
-        :type email: str or unicode
-        :param phone: the phone contact
-        :type phone: str or unicode
+        :param personal_info: personal information
+        :type personal_info: PersonalInformation
+
 
         Example security parameters::
             "parameters": {
@@ -270,11 +323,7 @@ class Oracle(object):
         r = {'walletAgent': self._wallet_agent, 'rulesetId': 'default'}
         if self.manager:
             r['managerUsername'] = self.manager
-        r['pii'] = {}
-        if email:
-            r['pii']['email'] = email
-        if email:
-            r['pii']['phone'] = phone
+        r['pii'] = self.populate_pii(personal_info)
         r['parameters'] = parameters
         r['keys'] = [k.hwif() for k in self._account.keys]
         body = json.dumps(r)
@@ -287,7 +336,7 @@ class Oracle(object):
             self.num_oracle_keys = len(result['keys']['default'])
             self._account.set_complete()
         elif response.status_code == 400 and result.get('error', None) == 'already exists':
-            raise OracleError("already exists")
+            raise OracleAccountExistsException("already exists")
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
@@ -295,6 +344,42 @@ class Oracle(object):
             print(response.content)
             raise Error("Unknown response %d" % (response.status_code,))
 
+    def verify_personal_information(self, personal_info, call=None, callback=None):
+        """
+        Create an Oracle keychain on server and retrieve the oracle public key.
+
+        :param personal_info: personal information
+        :type personal_info: PersonalInformation
+        :param call: Device to call ("phone")
+        :type call: str
+        :param callback: URL where Oracle can inform the app about asynchronous results
+        :type callback: str
+        """
+        r = {'walletAgent': self._wallet_agent}
+        if self.manager:
+            r['managerUsername'] = self.manager
+        r['pii'] = self.populate_pii(personal_info)
+        if callback:
+            r['callback'] = callback
+        if call:
+            r['call'] = call
+        body = json.dumps(r)
+        url = self._url() + "/verifyPii"
+        response = requests.post(url, body, headers={'content-type': 'application/json'})
+
+        result = response.json()
+        if response.status_code == 200 and result.get('result', None) == 'success':
+            pass
+        elif response.status_code == 400 and result.get('error', None) == 'phone type not yet known':
+            raise OracleCannotCallException(result['error'])
+        elif response.status_code == 400 and result.get('error', None) == 'phone is not a landline':
+            raise OracleCannotCallException(result['error'])
+        elif response.status_code == 200 or response.status_code == 400:
+            raise OracleError(response.content)
+        else:
+            print(body)
+            print(response.content)
+            raise Error("Unknown response %d" % (response.status_code,))
 
 def dummy_signature(sig_type):
     order = generator_secp256k1.order()
