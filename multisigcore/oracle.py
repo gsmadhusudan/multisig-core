@@ -216,10 +216,13 @@ class Oracle(object):
         else:
             raise IOError("Unknown response %d" % (response.status_code,))
 
+    def _uuid(self):
+        """Get oracle keychain identifier"""
+        return str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self._account.public_keys[0])))
+
     def _url(self):
-        account_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "urn:digitaloracle.co:%s" % (self._account.public_keys[0])))
-        url = self.base_url + "keychains/" + account_id
-        return url
+        """Get oracle keychain URL"""
+        return self.base_url + "keychains/" + self._uuid()
 
     def get(self):
         """Retrieve the oracle public key from the Oracle"""
