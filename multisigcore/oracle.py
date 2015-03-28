@@ -1,15 +1,18 @@
 from __future__ import print_function
+import json
+import uuid
+
 import dateutil.tz
 import dateutil.parser
+import requests
+
 from pycoin.tx import Tx
 from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import b2h, stream_to_bytes
 from .hierarchy import *
 from pycoin.tx.script.tools import *
 from pycoin.tx.script import der
-import json
-import requests
-import uuid
+
 
 __author__ = 'sserrano, devrandom'
 
@@ -91,27 +94,13 @@ class SignatureResult(dict):
 
 
 class PersonalInformation(object):
+    __slots__ = ['phone', 'email', 'phone_code_sms', 'phone_force_voice']
+
     def __init__(self, phone=None, email=None, phone_code_sms=None, phone_force_voice=None):
-        self._phone = phone
-        self._email = email
-        self._phone_code_sms = phone_code_sms
-        self._phone_force_voice = phone_force_voice
-
-    @property
-    def phone(self):
-        return self._phone
-
-    @property
-    def email(self):
-        return self._email
-
-    @property
-    def phone_code_sms(self):
-        return self._phone_force_voice
-
-    @property
-    def phone_force_voice(self):
-        return self._phone_force_voice
+        object.__setattr__(self, 'phone', phone)
+        object.__setattr__(self, 'email', email)
+        object.__setattr__(self, 'phone_code_sms', phone_code_sms)
+        object.__setattr__(self, 'phone_force_voice', phone_force_voice)
 
 
 class Oracle(object):

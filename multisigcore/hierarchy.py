@@ -1,10 +1,16 @@
 from __future__ import print_function
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
+from pycoin.scripts.tx import DEFAULT_VERSION
 from pycoin.serialize import h2b
+from pycoin.services import providers
+from pycoin.tx import Tx, Spendable, TxOut
+from pycoin.tx.TxOut import standard_tx_out_script
 from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 
 __author__ = 'devrandom'
+
+LOOKAHEAD = 20
 
 
 class AccountKey(BIP32Node):
@@ -60,36 +66,128 @@ class ElectrumMasterKey(BIP32Node):
         return self.account_for_path("%s" % (n,))
 
 
-class MultisigAccount:
-    def __init__(self, keys, num_sigs=None, sort=True, complete=True):
-        """
-        Create an Oracle object
+class Account(object):
+    __slots__ = ['num_ext_keys', 'num_int_keys', 'netcode', '_provider']
 
-        :param keys: non-oracle deterministic keys
-        :type keys: list[BIP32Node]
-        :param num_sigs: number of required signatures
-        :param complete: whether we need additional keys to complete the configuration of this account
+    def __init__(self, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+        if num_ext_keys is None:
+            num_ext_keys = LOOKAHEAD
+        if num_int_keys is None:
+            num_int_keys = LOOKAHEAD
+        object.__setattr__(self, 'num_ext_keys', num_ext_keys)
+        object.__setattr__(self, 'num_int_keys', num_int_keys)
+        object.__setattr__(self, 'netcode', netcode)
+        self._provider = providers
+
+    def address(self, n, change=False):
+        raise NotImplementedError()
+
+    def addresses(self):
+        addresses = [self.address(n, False) for n in range(0, self.num_ext_keys)]
+        addresses.extend([self.address(n, True) for n in range(0, self.num_int_keys)])
+        return addresses
+
+    def spendables(self):
         """
-        self.keys = keys
-        self.public_keys = [str(key.wallet_key(as_private=False)) for key in self.keys]
-        self.num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
-        self.complete = complete
-        self.sort = sort
+        :return:
+        :rtype: list[Spendable]
+        """
+        addresses = self.addresses()
+        spendables = []
+        for addr in addresses:
+            spendables.extend(self._provider.spendables_for_address(addr))
+
+        return spendables
+
+    def balance(self):
+        spendables = self.spendables()
+        total = reduce(lambda x,y: x+y, [s.coin_value for s in spendables])
+        return total
+
+    def tx(self, payables):
+        """
+        :param list[(str, int)] payables: tuple of address and amount
+        :return Tx:
+        """
+        all_spendables = self.spendables()
+        fee = 1000
+        send_amount = 0
+        txs_out = []
+        for address, coin_value in payables:
+            script = standard_tx_out_script(address)
+            txs_out.append(TxOut(coin_value, script))
+            send_amount += coin_value
+
+        total = 0
+        txs_in = []
+        spendables = []
+        while total < send_amount + fee and all_spendables:
+            spend = all_spendables.pop(0)
+            spendables.append(spend)
+            txs_in.append(spend.tx_in())
+            total += spend.coin_value
+        # check total >= amount + fee
+        tx = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
+        return tx
+
+class SimpleAccount(Account):
+    __slots__ = ['_key']
+
+    def __init__(self, key, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+        """
+        :param key:
+        :type key: AccountKey
+        """
+        super(SimpleAccount, self).__init__(netcode, num_ext_keys, num_int_keys)
+        self._key = key
+
+    def address(self, n, change=False):
+        return self._key.subkey_for_path("%s/%s" % (n, 1 if change else 0)).address(self.netcode)
+
+
+class MultisigAccount(Account):
+    def __init__(self, keys, num_sigs=None, sort=True, complete=True, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+        """
+            Create a multisig account with multiple participating keys
+
+            :param keys: non-oracle deterministic keys
+            :type keys: list[BIP32Node]
+            :param num_sigs: number of required signatures
+            :param complete: whether we need additional keys to complete the configuration of this account
+            """
+        super(MultisigAccount, self).__init__(netcode, num_ext_keys, num_int_keys)
+        self._keys = keys
+        self._public_keys = [str(key.wallet_key(as_private=False)) for key in self._keys]
+        self._num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
+        self._complete = complete
+        self._sort = sort
+
+    @property
+    def complete(self):
+        return self._complete
+
+    @property
+    def public_keys(self):
+        return self._public_keys
+
+    @property
+    def keys(self):
+        return self._keys
 
     def add_key(self, key):
-        if self.complete:
+        if self._complete:
             raise Exception("account already complete")
-        self.keys.append(key)
-        self.public_keys.append(key.wallet_key(as_private=False))
+        self._keys.append(key)
+        self._public_keys.append(key.wallet_key(as_private=False))
 
     def add_keys(self, keys):
         for key in keys:
             self.add_key(key)
 
     def set_complete(self):
-        if self.complete:
+        if self._complete:
             raise Exception("account already complete")
-        self.complete = True
+        self._complete = True
 
     def leaf_script(self, n, change=False):
         return self.script_for_path("%s/%s" % (n, 1 if change else 0))
@@ -97,8 +195,8 @@ class MultisigAccount:
     def leaf_payto(self, n, change=False):
         return self.payto_for_path("%s/%s" % (n, 1 if change else 0))
 
-    def address(self, n, change=False, netcode='BTC'):
-        return self.leaf_payto(n, change).address(netcode)
+    def address(self, n, change=False):
+        return self.leaf_payto(n, change).address(self.netcode)
 
     def script_for_path(self, path):
         """Get the redeem script for the path.  The multisig format is (n-1) of n, but can be overridden.
@@ -108,13 +206,13 @@ class MultisigAccount:
         :return: the script
         :rtype: ScriptMultisig
         """
-        if not self.complete:
+        if not self._complete:
             raise Exception("account not complete")
-        subkeys = [key.subkey_for_path(path or "") for key in self.keys]
+        subkeys = [key.subkey_for_path(path or "") for key in self._keys]
         secs = [key.sec() for key in subkeys]
-        if self.sort:
+        if self._sort:
             secs.sort()
-        script = ScriptMultisig(self.num_sigs, secs)
+        script = ScriptMultisig(self._num_sigs, secs)
         return script
 
     def payto_for_path(self, path):

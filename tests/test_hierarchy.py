@@ -1,7 +1,10 @@
 from unittest import TestCase
+
 from pycoin.serialize import h2b
-from multisigcore.hierarchy import MasterKey, ElectrumMasterKey
+from multisigcore.hierarchy import ElectrumMasterKey, SimpleAccount
+from pycoin.tx import Spendable
 from tests import *
+
 
 __author__ = 'devrandom'
 
@@ -53,3 +56,19 @@ class HierarchyTest(TestCase):
         self.assertEqual("3NgaSSt2qhSY28viYuYQQkmP2K6KuU2MXj", self.multisig_account.address(1))
         self.assertEqual("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", uma.address(1))
 
+    def test_simple_account(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+        class MyProvider(object):
+            def spendables_for_address(self, address):
+                if address == "16xzqY7r2ANVH22N13yX91FYfP8Btf1X6k":
+                    return [Spendable(coin_value=1, script=b'', tx_out_index=0, tx_hash=b'')]
+                else:
+                    return []
+        account._provider = MyProvider()
+        self.assertEqual(40, len(account.addresses()))
+        self.assertEqual("16xzqY7r2ANVH22N13yX91FYfP8Btf1X6k", account.addresses()[0])
+        spendables = account.spendables()
+        self.assertEqual(1, len(spendables))
+        tx = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 1)])
+        print(tx)
