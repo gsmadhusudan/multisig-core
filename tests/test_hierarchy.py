@@ -1,12 +1,10 @@
 from unittest import TestCase
 
-from pycoin.serialize import h2b
-from multisigcore.hierarchy import ElectrumMasterKey, SimpleAccount
-from pycoin.tx import Spendable
-from tests import *
+from multisigcore.testing import *
 
 
 __author__ = 'devrandom'
+
 
 class HierarchyTest(TestCase):
     def setUp(self):
