@@ -60,13 +60,23 @@ class HierarchyTest(TestCase):
         class MyProvider(object):
             def spendables_for_address(self, address):
                 if address == "16xzqY7r2ANVH22N13yX91FYfP8Btf1X6k":
-                    return [Spendable(coin_value=1, script=b'', tx_out_index=0, tx_hash=b'')]
+                    return [Spendable(coin_value=10000, script=b'aaaa', tx_out_index=0, tx_hash=b'2'*20)]
                 else:
                     return []
         account._provider = MyProvider()
-        self.assertEqual(40, len(account.addresses()))
+        self.assertEqual(2, len(account.addresses()))
         self.assertEqual("16xzqY7r2ANVH22N13yX91FYfP8Btf1X6k", account.addresses()[0])
+        self.assertEqual("16xzqY7r2ANVH22N13yX91FYfP8Btf1X6k", account.current_address())
+        self.assertEqual("1JRvM3QE9qEXZPRBoKCGG76u7RvVnjCYma", account.current_change_address())
+        self.assertEqual(10000, account.balance())
         spendables = account.spendables()
         self.assertEqual(1, len(spendables))
-        tx = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 1)])
-        print(tx)
+        tx = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 2000)])
+        self.assertEqual(1, len(tx.txs_in))
+        self.assertEqual(2, len(tx.txs_out))
+        self.assertEqual(2000, tx.txs_out[0].coin_value)
+        self.assertEqual(7000, tx.txs_out[1].coin_value)
+        self.assertEqual(b'', tx.txs_in[0].script)
+        self.assertEqual(b'2'*20, tx.txs_in[0].previous_hash)
+        self.assertIsNotNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9000)]))
+        self.assertIsNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9001)]))

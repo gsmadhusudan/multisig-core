@@ -1,4 +1,6 @@
 from __future__ import print_function
+import io
+
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.scripts.tx import DEFAULT_VERSION
@@ -8,9 +10,11 @@ from pycoin.tx import Tx, Spendable, TxOut
 from pycoin.tx.TxOut import standard_tx_out_script
 from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 
+
 __author__ = 'devrandom'
 
 LOOKAHEAD = 20
+DUST = 546
 
 
 class AccountKey(BIP32Node):
@@ -65,15 +69,33 @@ class ElectrumMasterKey(BIP32Node):
     def electrum_account(self, n):
         return self.account_for_path("%s" % (n,))
 
+TX_FEE_PER_THOUSAND_BYTES = 1000
+
+
+def recommended_fee_for_tx(tx):
+    """
+    Return the recommended transaction fee in satoshis.
+    This is a grossly simplified version of this function.
+    TODO: improve to consider TxOut sizes.
+      - whether the transaction contains "dust"
+      - whether any outputs are less than 0.001
+    """
+    # FIXME review
+    s = io.BytesIO()
+    tx.stream(s)
+    tx_byte_count = len(s.getvalue())
+    tx_fee = TX_FEE_PER_THOUSAND_BYTES * ((999+tx_byte_count)//1000)
+    return tx_fee
+
 
 class Account(object):
     __slots__ = ['num_ext_keys', 'num_int_keys', 'netcode', '_provider']
 
     def __init__(self, netcode='BTC', num_ext_keys=None, num_int_keys=None):
         if num_ext_keys is None:
-            num_ext_keys = LOOKAHEAD
+            num_ext_keys = 1
         if num_int_keys is None:
-            num_int_keys = LOOKAHEAD
+            num_int_keys = 1
         object.__setattr__(self, 'num_ext_keys', num_ext_keys)
         object.__setattr__(self, 'num_int_keys', num_int_keys)
         object.__setattr__(self, 'netcode', netcode)
@@ -107,28 +129,52 @@ class Account(object):
     def tx(self, payables):
         """
         :param list[(str, int)] payables: tuple of address and amount
-        :return Tx:
+        :return Tx or None: the transaction or None if not enough balance
         """
         all_spendables = self.spendables()
-        fee = 1000
+
         send_amount = 0
+        for address, coin_value in payables:
+            send_amount += coin_value
+
         txs_out = []
         for address, coin_value in payables:
             script = standard_tx_out_script(address)
             txs_out.append(TxOut(coin_value, script))
-            send_amount += coin_value
 
         total = 0
         txs_in = []
         spendables = []
+        while total < send_amount and all_spendables:
+            spend = all_spendables.pop(0)
+            spendables.append(spend)
+            txs_in.append(spend.tx_in())
+            total += spend.coin_value
+
+        tx_for_fee = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
+        fee = recommended_fee_for_tx(tx_for_fee)
+
         while total < send_amount + fee and all_spendables:
             spend = all_spendables.pop(0)
             spendables.append(spend)
             txs_in.append(spend.tx_in())
             total += spend.coin_value
+
+        if total > send_amount + fee + DUST:
+            script = standard_tx_out_script(self.current_change_address())
+            txs_out.append(TxOut(total - send_amount - fee, script))
+        elif total < send_amount + fee:
+            return None
+
         # check total >= amount + fee
         tx = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         return tx
+
+    def current_address(self):
+        return self.address(self.num_ext_keys - 1)
+
+    def current_change_address(self):
+        return self.address(self.num_int_keys - 1, True)
 
 class SimpleAccount(Account):
     __slots__ = ['_key']
