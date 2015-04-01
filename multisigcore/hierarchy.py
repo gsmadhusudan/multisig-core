@@ -2,7 +2,6 @@ from __future__ import print_function
 import io
 
 import multisigcore
-
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.scripts.tx import DEFAULT_VERSION
@@ -157,7 +156,7 @@ class Account(object):
         :param list[(str, int)] payables: tuple of address and amount
         :return Tx or None: the transaction or None if not enough balance
         """
-        all_spendables = [(s, addr) for (addr, sublist) in self.spendables().iteritems() for s in sublist]
+        all_spendables = [(s, addr) for (addr, sublist) in self.spendables().items() for s in sublist]
 
         send_amount = 0
         for address, coin_value in payables:

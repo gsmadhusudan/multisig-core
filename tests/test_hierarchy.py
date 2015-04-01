@@ -2,9 +2,9 @@ from unittest import TestCase
 
 from multisigcore.testing import *
 from pycoin.encoding import bitcoin_address_to_hash160_sec
+from pycoin.networks import address_prefix_for_netcode
 from pycoin.tx import Spendable
 from pycoin.tx.pay_to import ScriptPayToAddress
-
 
 __author__ = 'devrandom'
 
@@ -62,6 +62,18 @@ class HierarchyTest(TestCase):
         account_key = master_key.account_for_path("0H/1/2H")
         account = SimpleAccount(account_key)
         self.assertEqual('mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR', account.current_address())
+        class MyProvider(object):
+            def spendables_for_address(self, address):
+                if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
+                    return [Spendable(coin_value=10000,
+                                      script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN'))).script(),
+                                      tx_out_index=0, tx_hash=b'2'*20)]
+                else:
+                    return []
+        account._provider = MyProvider()
+        self.assertEqual(1, len(account.spendables()))
+        tx = account.tx([("mvccWwntgfQaj7TVYEw2C2avymxHwjixDz", 2000)])
+        account.sign_tx(tx)
 
     def test_simple_account(self):
         account_key = self.master_key.account_for_path("0H/1/2H")
