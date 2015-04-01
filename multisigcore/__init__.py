@@ -1,12 +1,34 @@
 """
 
 """
+from pycoin.encoding import wif_to_secret_exponent
+from pycoin.networks import wif_prefix_for_netcode
 
 __author__ = 'devrandom'
 
-from pycoin.tx.pay_to import build_p2sh_lookup
+from pycoin.tx.pay_to import build_p2sh_lookup, build_hash160_lookup
 from pycoin.tx.tx_utils import LazySecretExponentDB
 from .oracle import Oracle
+
+
+class LazySecretExponentDBWithNetwork(LazySecretExponentDB):
+    def __init__(self, netcode, wif_iterable, secret_exponent_db_cache):
+        super(LazySecretExponentDBWithNetwork, self).__init__(wif_iterable, secret_exponent_db_cache)
+        self.netcode = netcode
+        self.wif_prefix = wif_prefix_for_netcode(netcode)
+
+    def get(self, v):
+        if v in self.secret_exponent_db_cache:
+            return self.secret_exponent_db_cache[v]
+        for wif in self.wif_iterable:
+            secret_exponent = wif_to_secret_exponent(wif, self.wif_prefix)
+            d = build_hash160_lookup([secret_exponent])
+            self.secret_exponent_db_cache.update(d)
+            if v in self.secret_exponent_db_cache:
+                return self.secret_exponent_db_cache[v]
+        self.wif_iterable = []
+        return None
+
 
 def local_sign(tx, scripts, keys):
     """
@@ -14,15 +36,22 @@ def local_sign(tx, scripts, keys):
 
     :param tx:
     :param scripts:
-    :param keys:
+    :param keys: one key per transaction input
     :return:
     """
-    raw_scripts = [script.script() for script in scripts]
-    lookup = build_p2sh_lookup(raw_scripts)
-    db = LazySecretExponentDB([key.wif() for key in keys], {})
-    # FIXME hack to work around broken p2sh signing in pycoin
-    for i in range(len(tx.unspents)):
-        tx.unspents[i].script = raw_scripts[i]
+    lookup = None
+    if scripts:
+        raw_scripts = [script.script() for script in scripts]
+        lookup = build_p2sh_lookup(raw_scripts)
+        # FIXME hack to work around broken p2sh signing in pycoin
+        for i in range(len(tx.unspents)):
+            tx.unspents[i].script = raw_scripts[i]
+    if keys:
+        netcode = keys[0]._netcode
+    else:
+        # Nothing to do
+        return
+    db = LazySecretExponentDBWithNetwork(netcode, [key.wif() for key in keys], {})
     tx.sign(db, p2sh_lookup=lookup)
 
 

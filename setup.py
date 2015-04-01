@@ -30,12 +30,13 @@ setup(
         'Topic :: Internet',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    install_requires=[
+    requires=[
         'pycoin',
         'requests'
     ],
     tests_require=[
-        'httmock'
+        'httmock',
+        'mock'
     ],
     test_suite='tests',
 )

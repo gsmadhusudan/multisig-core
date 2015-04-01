@@ -1,14 +1,13 @@
 import io
 import json
+
+from httmock import HTTMock
+import dateutil.parser
+
 from multisigcore.oracle import OracleError, OracleDeferralException, OracleRejectionException, OracleLockoutException, \
     PersonalInformation
+from multisigcore.testing import *
 
-from pycoin.serialize import h2b
-from pycoin.tx import Tx
-from multisigcore.hierarchy import AccountKey, MasterKey, MultisigAccount
-from tests import *
-from httmock import urlmatch, HTTMock
-import dateutil.parser
 
 __author__ = 'devrandom'
 
