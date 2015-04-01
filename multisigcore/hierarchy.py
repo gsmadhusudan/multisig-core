@@ -1,12 +1,14 @@
 from __future__ import print_function
 import io
 
+import multisigcore
+
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.scripts.tx import DEFAULT_VERSION
 from pycoin.serialize import h2b
 from pycoin.services import providers
-from pycoin.tx import Tx, Spendable, TxOut
+from pycoin.tx import Tx, TxOut, TxIn
 from pycoin.tx.TxOut import standard_tx_out_script
 from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
 
@@ -88,8 +90,19 @@ def recommended_fee_for_tx(tx):
     return tx_fee
 
 
+class AccountTxIn(TxIn):
+    def __init__(self, path, previous_hash, previous_index, script=b'', sequence=4294967295):
+        super(AccountTxIn, self).__init__(previous_hash, previous_index, script, sequence)
+        self.path = path
+
+
+class AccountTxOut(TxOut):
+    def __init__(self, path, coin_value, script):
+        super(AccountTxOut, self).__init__(coin_value, script)
+        self.path = path
+
 class Account(object):
-    __slots__ = ['num_ext_keys', 'num_int_keys', 'netcode', '_provider']
+    __slots__ = ['num_ext_keys', 'num_int_keys', 'netcode', 'lookahead', 'address_map', '_provider']
 
     def __init__(self, netcode='BTC', num_ext_keys=None, num_int_keys=None):
         if num_ext_keys is None:
@@ -99,31 +112,44 @@ class Account(object):
         object.__setattr__(self, 'num_ext_keys', num_ext_keys)
         object.__setattr__(self, 'num_int_keys', num_int_keys)
         object.__setattr__(self, 'netcode', netcode)
+        object.__setattr__(self, 'lookahead', LOOKAHEAD)
         self._provider = providers
+
+    def set_lookahead(self, lookahead):
+        object.__setattr__(self, 'lookahead', lookahead)
 
     def address(self, n, change=False):
         raise NotImplementedError()
 
-    def addresses(self):
-        addresses = [self.address(n, False) for n in range(0, self.num_ext_keys)]
-        addresses.extend([self.address(n, True) for n in range(0, self.num_int_keys)])
+    def addresses(self, do_lookahead=False):
+        lookahead = self.lookahead if do_lookahead else 0
+        addresses = [self.address(n, False) for n in range(0, self.num_ext_keys + lookahead)]
+        addresses.extend([self.address(n, True) for n in range(0, self.num_int_keys + lookahead)])
         return addresses
+
+    def make_address_map(self, do_lookahead=False):
+        lookahead = self.lookahead if do_lookahead else 0
+        address_map = {self.address(n, False): "%d/0"%(n,) for n in range(0, self.num_ext_keys + lookahead)}
+        address_map.update({self.address(n, True): "%d/1"%(n,) for n in range(0, self.num_int_keys + lookahead)})
+        return address_map
 
     def spendables(self):
         """
         :return:
-        :rtype: list[Spendable]
+        :rtype: dict of [str, Spendable]
         """
-        addresses = self.addresses()
-        spendables = []
-        for addr in addresses:
-            spendables.extend(self._provider.spendables_for_address(addr))
+        self.address_map = self.make_address_map(True)
+        spendables = {}
+        for addr in self.address_map.keys():
+            spends = self._provider.spendables_for_address(addr)
+            if spends:
+                spendables[addr] = spends
 
         return spendables
 
     def balance(self):
         spendables = self.spendables()
-        total = reduce(lambda x,y: x+y, [s.coin_value for s in spendables])
+        total = reduce(lambda x,y: x+y, [s.coin_value for sublist in spendables.values() for s in sublist], 0)
         return total
 
     def tx(self, payables):
@@ -131,7 +157,7 @@ class Account(object):
         :param list[(str, int)] payables: tuple of address and amount
         :return Tx or None: the transaction or None if not enough balance
         """
-        all_spendables = self.spendables()
+        all_spendables = [(s, addr) for (addr, sublist) in self.spendables().iteritems() for s in sublist]
 
         send_amount = 0
         for address, coin_value in payables:
@@ -146,23 +172,24 @@ class Account(object):
         txs_in = []
         spendables = []
         while total < send_amount and all_spendables:
-            spend = all_spendables.pop(0)
+            (spend, addr) = all_spendables.pop(0)
             spendables.append(spend)
-            txs_in.append(spend.tx_in())
+            txs_in.append(AccountTxIn(self.path_for(addr), spend.tx_hash, spend.tx_out_index, script=b''))
             total += spend.coin_value
 
         tx_for_fee = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         fee = recommended_fee_for_tx(tx_for_fee)
 
         while total < send_amount + fee and all_spendables:
-            spend = all_spendables.pop(0)
+            (spend, addr) = all_spendables.pop(0)
             spendables.append(spend)
-            txs_in.append(spend.tx_in())
+            txs_in.append(AccountTxIn(self.path_for_check(addr), spend.tx_hash, spend.tx_out_index, script=b''))
             total += spend.coin_value
 
         if total > send_amount + fee + DUST:
-            script = standard_tx_out_script(self.current_change_address())
-            txs_out.append(TxOut(total - send_amount - fee, script))
+            addr = self.current_change_address()
+            script = standard_tx_out_script(addr)
+            txs_out.append(AccountTxOut(self.path_for_check(addr), total - send_amount - fee, script))
         elif total < send_amount + fee:
             return None
 
@@ -170,26 +197,46 @@ class Account(object):
         tx = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         return tx
 
+    def sign_tx(self, tx):
+        keys = self.keys_for_tx(tx)
+
+        multisigcore.local_sign(tx, None, keys)
+
     def current_address(self):
         return self.address(self.num_ext_keys - 1)
 
     def current_change_address(self):
         return self.address(self.num_int_keys - 1, True)
 
+    def path_for(self, addr):
+        return self.address_map[addr]
+
+    def path_for_check(self, addr):
+        path = self.address_map[addr]
+        if path is None:
+            raise ValueError("unknown address %s"%(addr,))
+        return path
+
+    def keys_for_tx(self, tx):
+        raise NotImplementedError()
+
+
 class SimpleAccount(Account):
     __slots__ = ['_key']
 
-    def __init__(self, key, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+    def __init__(self, key, num_ext_keys=None, num_int_keys=None):
         """
         :param key:
         :type key: AccountKey
         """
-        super(SimpleAccount, self).__init__(netcode, num_ext_keys, num_int_keys)
+        super(SimpleAccount, self).__init__(key._netcode, num_ext_keys, num_int_keys)
         self._key = key
 
     def address(self, n, change=False):
-        return self._key.subkey_for_path("%s/%s" % (n, 1 if change else 0)).address(self.netcode)
+        return self._key.subkey_for_path("%s/%s" % (n, 1 if change else 0)).address()
 
+    def keys_for_tx(self, tx):
+        return [(self._key.subkey_for_path(tin.path) if tin.path else None) for tin in tx.txs_in]
 
 class MultisigAccount(Account):
     def __init__(self, keys, num_sigs=None, sort=True, complete=True, netcode='BTC', num_ext_keys=None, num_int_keys=None):

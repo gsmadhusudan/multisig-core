@@ -17,12 +17,14 @@ def local_sign(tx, scripts, keys):
     :param keys:
     :return:
     """
-    raw_scripts = [script.script() for script in scripts]
-    lookup = build_p2sh_lookup(raw_scripts)
+    lookup = None
+    if scripts:
+        raw_scripts = [script.script() for script in scripts]
+        lookup = build_p2sh_lookup(raw_scripts)
+        # FIXME hack to work around broken p2sh signing in pycoin
+        for i in range(len(tx.unspents)):
+            tx.unspents[i].script = raw_scripts[i]
     db = LazySecretExponentDB([key.wif() for key in keys], {})
-    # FIXME hack to work around broken p2sh signing in pycoin
-    for i in range(len(tx.unspents)):
-        tx.unspents[i].script = raw_scripts[i]
     tx.sign(db, p2sh_lookup=lookup)
 
 
