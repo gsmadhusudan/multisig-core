@@ -104,6 +104,11 @@ class Account(object):
     __slots__ = ['num_ext_keys', 'num_int_keys', 'netcode', 'lookahead', 'address_map', '_provider']
 
     def __init__(self, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+        """
+        :param netcode:
+        :param num_ext_keys: number of issued external keys
+        :param num_int_keys: number of issued internal keys
+        """
         if num_ext_keys is None:
             num_ext_keys = 1
         if num_int_keys is None:
@@ -115,18 +120,36 @@ class Account(object):
         self._provider = providers
 
     def set_lookahead(self, lookahead):
+        """Set the lookahead for looking for spendables"""
         object.__setattr__(self, 'lookahead', lookahead)
 
     def address(self, n, change=False):
+        """
+        The address of leaf key n in either the public subchain or the change subchain
+        :param n: leaf key number, starts at zero
+        :param change: whether we want the change subchain
+        :return: the address string
+        :rtype: str
+        """
         raise NotImplementedError()
 
     def addresses(self, do_lookahead=False):
+        """
+        :param do_lookahead: whether to look ahead beyond our last issued address
+        :return: list of addresses
+        :rtype: list of [str]
+        """
         lookahead = self.lookahead if do_lookahead else 0
         addresses = [self.address(n, False) for n in range(0, self.num_ext_keys + lookahead)]
         addresses.extend([self.address(n, True) for n in range(0, self.num_int_keys + lookahead)])
         return addresses
 
     def make_address_map(self, do_lookahead=False):
+        """
+        :param do_lookahead: whether to look ahead beyond our last issued address
+        :return: map of addresses to sub-paths
+        :rtype: dict of [str, str]
+        """
         lookahead = self.lookahead if do_lookahead else 0
         address_map = {self.address(n, False): "%d/0"%(n,) for n in range(0, self.num_ext_keys + lookahead)}
         address_map.update({self.address(n, True): "%d/1"%(n,) for n in range(0, self.num_int_keys + lookahead)})
@@ -134,7 +157,7 @@ class Account(object):
 
     def spendables(self):
         """
-        :return:
+        :return: list of spendables for our keys
         :rtype: dict of [str, Spendable]
         """
         self.address_map = self.make_address_map(True)
@@ -147,12 +170,14 @@ class Account(object):
         return spendables
 
     def balance(self):
+        """Total balance in spendables for our keys"""
         spendables = self.spendables()
         total = reduce(lambda x,y: x+y, [s.coin_value for sublist in spendables.values() for s in sublist], 0)
         return total
 
     def tx(self, payables):
         """
+        Construct a transaction with available spendables
         :param list[(str, int)] payables: tuple of address and amount
         :return Tx or None: the transaction or None if not enough balance
         """
@@ -197,26 +222,53 @@ class Account(object):
         return tx
 
     def sign_tx(self, tx):
+        """Sign a previously constructed transaction
+        :param Tx tx:
+        """
         keys = self.keys_for_tx(tx)
 
         multisigcore.local_sign(tx, None, keys)
 
     def current_address(self):
+        """
+        The last issued address.
+        :rtype: str
+        """
         return self.address(self.num_ext_keys - 1)
 
     def current_change_address(self):
+        """
+        The last issued change address.
+        :rtype: str
+        """
         return self.address(self.num_int_keys - 1, True)
 
     def path_for(self, addr):
+        """
+        :param str addr:
+        :return: sub-path (e.g. "0/123" or "1/456")
+        :rtype: str
+        """
         return self.address_map[addr]
 
     def path_for_check(self, addr):
+        """
+        :param str addr:
+        :return: sub-path (e.g. "0/123" or "1/456")
+        :rtype: str
+        :raise: if we haven't issued this address
+        """
         path = self.address_map[addr]
         if path is None:
             raise ValueError("unknown address %s"%(addr,))
         return path
 
     def keys_for_tx(self, tx):
+        """
+        A list of keys, matching each input
+        :param Tx tx:
+        :return: list of [pycoin.key.Key]
+        """
         raise NotImplementedError()
 
 
@@ -240,13 +292,13 @@ class SimpleAccount(Account):
 class MultisigAccount(Account):
     def __init__(self, keys, num_sigs=None, sort=True, complete=True, netcode='BTC', num_ext_keys=None, num_int_keys=None):
         """
-            Create a multisig account with multiple participating keys
+        Create a multisig account with multiple participating keys
 
-            :param keys: non-oracle deterministic keys
-            :type keys: list[BIP32Node]
-            :param num_sigs: number of required signatures
-            :param complete: whether we need additional keys to complete the configuration of this account
-            """
+        :param keys: non-oracle deterministic keys
+        :type keys: list[BIP32Node]
+        :param num_sigs: number of required signatures
+        :param complete: whether we need additional keys to complete the configuration of this account
+        """
         super(MultisigAccount, self).__init__(netcode, num_ext_keys, num_int_keys)
         self._keys = keys
         self._public_keys = [str(key.wallet_key(as_private=False)) for key in self._keys]
