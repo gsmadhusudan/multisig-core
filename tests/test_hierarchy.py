@@ -1,9 +1,13 @@
 from unittest import TestCase
-from pycoin.serialize import h2b
-from multisigcore.hierarchy import MasterKey, ElectrumMasterKey
-from tests import *
+
+from multisigcore.testing import *
+from pycoin.encoding import bitcoin_address_to_hash160_sec
+from pycoin.networks import address_prefix_for_netcode
+from pycoin.tx import Spendable
+from pycoin.tx.pay_to import ScriptPayToAddress
 
 __author__ = 'devrandom'
+
 
 class HierarchyTest(TestCase):
     def setUp(self):
@@ -53,3 +57,54 @@ class HierarchyTest(TestCase):
         self.assertEqual("3NgaSSt2qhSY28viYuYQQkmP2K6KuU2MXj", self.multisig_account.address(1))
         self.assertEqual("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", uma.address(1))
 
+    def test_simple_account_testnet(self):
+        master_key = MasterKey.from_seed(h2b("000102030405060708090a0b0c0d0e0f"), netcode='XTN')
+        account_key = master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+        self.assertEqual('mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR', account.current_address())
+        class MyProvider(object):
+            def spendables_for_address(self, address):
+                if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
+                    return [Spendable(coin_value=10000,
+                                      script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN'))).script(),
+                                      tx_out_index=0, tx_hash=b'2'*20)]
+                else:
+                    return []
+        account._provider = MyProvider()
+        self.assertEqual(1, len(account.spendables()))
+        tx = account.tx([("mvccWwntgfQaj7TVYEw2C2avymxHwjixDz", 2000)])
+        account.sign_tx(tx)
+
+    def test_simple_account(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+        class MyProvider(object):
+            def spendables_for_address(self, address):
+                if address == "1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec":
+                    return [Spendable(coin_value=10000,
+                                      script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address)).script(),
+                                      tx_out_index=0, tx_hash=b'2'*20)]
+                else:
+                    return []
+        account._provider = MyProvider()
+        account.set_lookahead(2)
+        self.assertEqual(2, len(account.addresses()))
+        self.assertEqual(6, len(account.addresses(True)))
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.address(0, False))
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.addresses()[0])
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.current_address())
+        self.assertEqual("181yMj2Es6RNvoHgj6bX82r2Vm38rmHV8C", account.current_change_address())
+        self.assertEqual(10000, account.balance())
+        spendables = account.spendables()
+        self.assertEqual(1, len(spendables))
+        tx = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 2000)])
+        self.assertEqual(1, len(tx.txs_in))
+        self.assertEqual(2, len(tx.txs_out))
+        self.assertEqual(2000, tx.txs_out[0].coin_value)
+        self.assertEqual(7000, tx.txs_out[1].coin_value)
+        self.assertEqual(b'', tx.txs_in[0].script)
+        self.assertEqual(b'2'*20, tx.txs_in[0].previous_hash)
+        self.assertIsNotNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9000)]))
+        self.assertIsNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9001)]))
+        account.sign_tx(tx)
+        self.assertTrue(tx.is_signature_ok(0))

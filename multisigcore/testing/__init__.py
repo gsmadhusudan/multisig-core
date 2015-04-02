@@ -1,5 +1,4 @@
-from multisigcore.hierarchy import MasterKey, MultisigAccount
-from multisigcore.hierarchy import AccountKey
+from multisigcore.hierarchy import *
 
 __author__ = 'devrandom'
 
@@ -11,8 +10,12 @@ TEST_PATH = "0/0/1"
 def make_multisig_account():
     return MultisigAccount(keys=[wallet_key, recover_key, oracle_key])
 
+
 def make_unsorted_multisig_account():
     return MultisigAccount(keys=[wallet_key, recover_key, oracle_key], sort=False)
 
+
 def make_incomplete_multisig_account():
     return MultisigAccount(keys=[wallet_key, recover_key], complete=False)
+
+
