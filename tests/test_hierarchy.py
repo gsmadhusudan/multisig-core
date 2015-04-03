@@ -75,6 +75,13 @@ class HierarchyTest(TestCase):
         tx = account.tx([("mvccWwntgfQaj7TVYEw2C2avymxHwjixDz", 2000)])
         account.sign_tx(tx)
 
+    def test_simple_account_cache(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.address(0, False))
+        account1 = SimpleAccount(account_key, account.cache)
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account1.address(0, False))
+
     def test_simple_account(self):
         account_key = self.master_key.account_for_path("0H/1/2H")
         account = SimpleAccount(account_key)
@@ -93,7 +100,7 @@ class HierarchyTest(TestCase):
         self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.address(0, False))
         self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.addresses()[0])
         self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.current_address())
-        self.assertEqual("181yMj2Es6RNvoHgj6bX82r2Vm38rmHV8C", account.current_change_address())
+        self.assertEqual("19Fi5VpcosH3CtCFjd5HyveM5c4Kecirza", account.current_change_address())
         self.assertEqual(10000, account.balance())
         spendables = account.spendables()
         self.assertEqual(1, len(spendables))

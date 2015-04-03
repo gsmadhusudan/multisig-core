@@ -1,5 +1,6 @@
 from __future__ import print_function
 import io
+import json
 
 import multisigcore
 from pycoin import encoding
@@ -101,40 +102,65 @@ class AccountTxOut(TxOut):
         self.path = path
 
 class Account(object):
-    __slots__ = ['num_ext_keys', 'num_int_keys', 'netcode', 'lookahead', 'address_map', '_provider']
+    __slots__ = ['netcode', 'lookahead', 'address_map', '_provider', '_cache']
 
-    def __init__(self, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+    def __init__(self, netcode='BTC', cache=None):
         """
-        :param netcode:
-        :param num_ext_keys: number of issued external keys
-        :param num_int_keys: number of issued internal keys
+        :param netcode: network code
+        :param str cache: the JSON formatted cache - see the cache property
         """
-        if num_ext_keys is None:
-            num_ext_keys = 1
-        if num_int_keys is None:
-            num_int_keys = 1
-        object.__setattr__(self, 'num_ext_keys', num_ext_keys)
-        object.__setattr__(self, 'num_int_keys', num_int_keys)
         object.__setattr__(self, 'netcode', netcode)
         object.__setattr__(self, 'lookahead', LOOKAHEAD)
         self._provider = providers
+
+        def decode_key(dct):
+            if 'hwif' in dct:
+                return BIP32Node.from_hwif(dct['hwif'])
+            return dct
+        if cache:
+            self._cache = json.loads(cache, object_hook=decode_key)
+        else:
+            self._cache = {'keys': {'0': [], '1': []}, 'issued': {'0': 1, '1': 1}}
 
     def set_lookahead(self, lookahead):
         """Set the lookahead for looking for spendables"""
         object.__setattr__(self, 'lookahead', lookahead)
 
+    @property
+    def cache(self):
+        """A JSON encoded cache.
+        Save this cache in a database in order to speed up public key and address derivation in the future.
+        Also stores the number of issued keys on the internal (change) and external (receive) subchains.
+        """
+        def encode_key(obj):
+            if isinstance(obj, BIP32Node):
+                return {'hwif': obj.hwif()}
+            raise TypeError()
+        return json.dumps(self._cache, default=encode_key)
+
     def address(self, n, change=False):
         """
         The address of leaf key n in either the public subchain or the change subchain
-        :param n: leaf key number, starts at zero
+        :param int n: leaf key number, starts at zero
         :param change: whether we want the change subchain
         :return: the address string
         :rtype: str
         """
         raise NotImplementedError()
 
+    @property
+    def num_ext_keys(self):
+        """The number of issued receive keys"""
+        return self._cache['issued']['0']
+
+    @property
+    def num_int_keys(self):
+        """The number of issued change keys"""
+        return self._cache['issued']['1']
+
     def addresses(self, do_lookahead=False):
         """
+        A list of all generated addresses
         :param do_lookahead: whether to look ahead beyond our last issued address
         :return: list of addresses
         :rtype: list of [str]
@@ -146,6 +172,7 @@ class Account(object):
 
     def make_address_map(self, do_lookahead=False):
         """
+        A map of addresses to derivation path
         :param do_lookahead: whether to look ahead beyond our last issued address
         :return: map of addresses to sub-paths
         :rtype: dict of [str, str]
@@ -157,6 +184,7 @@ class Account(object):
 
     def spendables(self):
         """
+        A list of Spendables - unspent transaction outputs
         :return: list of spendables for our keys
         :rtype: dict of [str, Spendable]
         """
@@ -265,7 +293,7 @@ class Account(object):
 
     def keys_for_tx(self, tx):
         """
-        A list of keys, matching each input
+        A list of private keys, matching each input
         :param Tx tx:
         :return: list of [pycoin.key.Key]
         """
@@ -275,22 +303,37 @@ class Account(object):
 class SimpleAccount(Account):
     __slots__ = ['_key']
 
-    def __init__(self, key, num_ext_keys=None, num_int_keys=None):
+    def __init__(self, key, cache=None):
         """
         :param key:
         :type key: AccountKey
+        :param str cache: JSON formatted cache
         """
-        super(SimpleAccount, self).__init__(key._netcode, num_ext_keys, num_int_keys)
+        super(SimpleAccount, self).__init__(key._netcode, cache)
         self._key = key
 
     def address(self, n, change=False):
-        return self._key.subkey_for_path("%s/%s" % (n, 1 if change else 0)).address()
+        subchain_index = '1' if change else '0'
+        key_cache = self._cache['keys'][subchain_index]
+        """:type : list"""
+        while len(key_cache) <= n:
+            key_cache.append(self._key.subkey_for_path("%s/%s" % (subchain_index, len(key_cache))).public_copy())
+        return key_cache[n].address()
 
     def keys_for_tx(self, tx):
-        return [(self._key.subkey_for_path(tin.path) if tin.path else None) for tin in tx.txs_in]
+        result = []
+        for tin in tx.txs_in:
+            if tin:
+                subchain_index, n = tin.path.split('/')
+                # we only cache public keys - derive the private key
+                result.append(self._key.subkey_for_path("%s/%s" % (subchain_index, n)))
+            else:
+                result.append(None)
+        return result
+
 
 class MultisigAccount(Account):
-    def __init__(self, keys, num_sigs=None, sort=True, complete=True, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+    def __init__(self, keys, num_sigs=None, sort=True, complete=True, netcode='BTC', cache=None):
         """
         Create a multisig account with multiple participating keys
 
@@ -299,7 +342,7 @@ class MultisigAccount(Account):
         :param num_sigs: number of required signatures
         :param complete: whether we need additional keys to complete the configuration of this account
         """
-        super(MultisigAccount, self).__init__(netcode, num_ext_keys, num_int_keys)
+        super(MultisigAccount, self).__init__(netcode, cache)
         self._keys = keys
         self._public_keys = [str(key.wallet_key(as_private=False)) for key in self._keys]
         self._num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
@@ -370,6 +413,9 @@ class MultisigAccount(Account):
         script = self.script_for_path(path)
         payto = LeafPayTo(hash160=encoding.hash160(script.script()), path=path)
         return payto
+
+    def keys_for_tx(self, tx):
+        raise NotImplementedError
 
 
 class LeafPayTo(ScriptPayToScript):
