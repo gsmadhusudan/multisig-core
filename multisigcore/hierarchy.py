@@ -101,6 +101,18 @@ class AccountTxOut(TxOut):
         super(AccountTxOut, self).__init__(coin_value, script)
         self.path = path
 
+
+class AccountTx(Tx):
+    def __init__(self, txs_in, txs_out, version, unspents):
+        super(AccountTx, self).__init__(txs_in=txs_in, txs_out=txs_out, version=version, unspents=unspents)
+
+    def input_chain_paths(self):
+        return [tin.path for tin in self.txs_in]
+
+    def output_chain_paths(self):
+        return [(tout.path if isinstance(tout, AccountTxOut) else None) for tout in self.txs_out]
+
+
 class Account(object):
     __slots__ = ['netcode', 'lookahead', 'address_map', '_provider', '_cache']
 
@@ -112,6 +124,7 @@ class Account(object):
         object.__setattr__(self, 'netcode', netcode)
         object.__setattr__(self, 'lookahead', LOOKAHEAD)
         self._provider = providers
+        self.address_map = None
 
         def decode_key(dct):
             if 'hwif' in dct:
@@ -120,7 +133,7 @@ class Account(object):
         if cache:
             self._cache = json.loads(cache, object_hook=decode_key)
         else:
-            self._cache = {'keys': {'0': [], '1': []}, 'issued': {'0': 1, '1': 1}}
+            self._cache = {'keys': {}, 'issued': {'0': 1, '1': 1}}
 
     def set_lookahead(self, lookahead):
         """Set the lookahead for looking for spendables"""
@@ -178,8 +191,8 @@ class Account(object):
         :rtype: dict of [str, str]
         """
         lookahead = self.lookahead if do_lookahead else 0
-        address_map = {self.address(n, False): "%d/0"%(n,) for n in range(0, self.num_ext_keys + lookahead)}
-        address_map.update({self.address(n, True): "%d/1"%(n,) for n in range(0, self.num_int_keys + lookahead)})
+        address_map = {self.address(n, False): "0/%d"%(n,) for n in range(0, self.num_ext_keys + lookahead)}
+        address_map.update({self.address(n, True): "1/%d"%(n,) for n in range(0, self.num_int_keys + lookahead)})
         return address_map
 
     def spendables(self):
@@ -246,7 +259,7 @@ class Account(object):
             return None
 
         # check total >= amount + fee
-        tx = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
+        tx = AccountTx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         return tx
 
     def sign_tx(self, tx):
@@ -255,7 +268,7 @@ class Account(object):
         """
         keys = self.keys_for_tx(tx)
 
-        multisigcore.local_sign(tx, None, keys)
+        multisigcore.local_sign(tx, self.collect_redeem_scripts(tx), keys)
 
     def current_address(self):
         """
@@ -299,6 +312,13 @@ class Account(object):
         """
         raise NotImplementedError()
 
+    def collect_redeem_scripts(self, tx):
+        """
+        :param Tx tx:
+        :rtype: dict or None
+        """
+        return None
+
 
 class SimpleAccount(Account):
     __slots__ = ['_key']
@@ -314,19 +334,17 @@ class SimpleAccount(Account):
 
     def address(self, n, change=False):
         subchain_index = '1' if change else '0'
-        key_cache = self._cache['keys'][subchain_index]
-        """:type : list"""
-        while len(key_cache) <= n:
-            key_cache.append(self._key.subkey_for_path("%s/%s" % (subchain_index, len(key_cache))).public_copy())
-        return key_cache[n].address()
+        path = "%s/%s" % (subchain_index, n)
+        if path not in self._cache['keys']:
+            self._cache['keys'][path] = self._key.subkey_for_path(path + ".pub")
+        return self._cache['keys'][path].address()
 
     def keys_for_tx(self, tx):
         result = []
         for tin in tx.txs_in:
-            if tin:
-                subchain_index, n = tin.path.split('/')
+            if tin and tin.path:
                 # we only cache public keys - derive the private key
-                result.append(self._key.subkey_for_path("%s/%s" % (subchain_index, n)))
+                result.append(self._key.subkey_for_path(tin.path))
             else:
                 result.append(None)
         return result
@@ -344,6 +362,7 @@ class MultisigAccount(Account):
         """
         super(MultisigAccount, self).__init__(netcode, cache)
         self._keys = keys
+        self._local_key = next(iter([key for key in keys if key.is_private()]), None)  # first private key
         self._public_keys = [str(key.wallet_key(as_private=False)) for key in self._keys]
         self._num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
         self._complete = complete
@@ -395,7 +414,11 @@ class MultisigAccount(Account):
         """
         if not self._complete:
             raise Exception("account not complete")
-        subkeys = [key.subkey_for_path(path or "") for key in self._keys]
+        if path not in self._cache['keys']:
+            self._cache['keys'][path] =\
+                [key.subkey_for_path(path + ".pub") for key in self.keys]
+
+        subkeys = self._cache['keys'][path]
         secs = [key.sec() for key in subkeys]
         if self._sort:
             secs.sort()
@@ -415,7 +438,23 @@ class MultisigAccount(Account):
         return payto
 
     def keys_for_tx(self, tx):
-        raise NotImplementedError
+        if self._local_key is None:
+            raise ValueError("no private key supplied - can't sign")
+        result = []
+        for tin in tx.txs_in:
+            if tin and tin.path:
+                # we only cache public keys - derive the private key
+                result.append(self._local_key.subkey_for_path(tin.path))
+            else:
+                result.append(None)
+        return result
+
+    def collect_redeem_scripts(self, tx):
+        raw_scripts = []
+        for tin in tx.txs_in:
+            if tin and tin.path:
+                raw_scripts.append(self.script_for_path(tin.path))
+        return raw_scripts
 
 
 class LeafPayTo(ScriptPayToScript):
