@@ -76,7 +76,7 @@ class HierarchyTest(TestCase):
         account._provider = MyProvider()
         self.assertEqual(1, len(account.spendables()))
         tx = account.tx([("mvccWwntgfQaj7TVYEw2C2avymxHwjixDz", 2000)])
-        account.sign_tx(tx)
+        account.sign(tx)
 
     def test_simple_account_cache(self):
         account_key = self.master_key.account_for_path("0H/1/2H")
@@ -115,7 +115,7 @@ class HierarchyTest(TestCase):
         self.assertEqual("3QWhcX2F7PK2W7YcKobeFvjBJLxaTuKyiT", account.current_change_address())
         self.assertEqual(10000, account.balance())
         tx = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 2000)])
-        account.sign_tx(tx)
+        account.sign(tx)
         # Countersign
         multisigcore.local_sign(tx, [redeem_script], [oracle_key.subkey_for_path("0/0")])
         self.assertTrue(tx.is_signature_ok(0))
@@ -151,8 +151,10 @@ class HierarchyTest(TestCase):
         self.assertEqual(b'', tx.txs_in[0].script)
         self.assertEqual(b'2'*32, tx.txs_in[0].previous_hash)
         self.assertIsNotNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9000)]))
-        self.assertIsNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9001)]))
-        account.sign_tx(tx)
+        with self.assertRaises(InsufficientBalanceException) as e:
+            account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9001)])
+        self.assertEqual(10000, e.exception.balance)
+        account.sign(tx)
         self.assertTrue(tx.is_signature_ok(0))
         self.assertEqual(["0/0"], tx.input_chain_paths())
         self.assertEqual([None, "1/0"], tx.output_chain_paths())

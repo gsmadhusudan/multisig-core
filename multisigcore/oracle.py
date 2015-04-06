@@ -173,16 +173,12 @@ class Oracle(object):
             req['verifications'] = verifications
         return req
 
-    def sign(self, tx, input_leafs, output_leafs, spend_id=None, verifications=None):
+    def sign(self, tx, spend_id=None, verifications=None):
         """
         Have the Oracle sign the transaction
 
         :param tx: the transaction to be signed
-        :type tx: Tx
-        :param input_leafs: the input leaf payto for each input, or None if the input does not need to be signed
-        :type input_leafs: list[LeafPayTo or None]
-        :param output_leafs: the output leaf payto, or None if the output is not change
-        :type input_leafs: list[LeafPayTo or None]
+        :type tx: AccountTx
         :param spend_id: an additional hex ID to disambiguate sends to the same outputs
         :type spend_id: str
         :param verifications: an optional dictionary with authorization code for each verification type.  Keys include "otp" and "code" (for SMS).
@@ -190,8 +186,8 @@ class Oracle(object):
         :return: a dictionary with the transaction in 'transaction' if successful
         :rtype: dict
         """
-        input_chain_paths = [x.path if x else None for x in input_leafs]
-        output_chain_paths = [x.path if x else None for x in output_leafs]
+        input_chain_paths = [x.path if isinstance(x, AccountTxIn) else None for x in tx.txs_in]
+        output_chain_paths = [x.path if isinstance(x, AccountTxOut) else None for x in tx.txs_out]
         return self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id, verifications)
 
     def sign_with_paths(self, tx, input_chain_paths, output_chain_paths, spend_id=None, verifications=None):

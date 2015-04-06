@@ -74,7 +74,7 @@ class OracleTest(unittest.TestCase):
             unsigned = self.make_partially_signed_tx_with_change()
             payto = self.account.payto_for_path(TEST_PATH)
             verifications = {"otp": "123456"}
-            res = self.oracle.sign(unsigned, [payto], [None, payto], verifications=verifications)
+            res = self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH], verifications=verifications)
             req = json.loads(self._request.body)
             self.assertEqual(req['transaction']['chainPaths'], ["0/0/1"])
             self.assertEqual(req['transaction']['outputChainPaths'], [None, "0/0/1"])
@@ -96,7 +96,7 @@ class OracleTest(unittest.TestCase):
             unsigned = self.make_partially_signed_tx_with_change()
             payto = self.account.payto_for_path(TEST_PATH)
             try:
-                self.oracle.sign(unsigned, [payto], [None, payto])
+                self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
             except OracleError, e:
                 pass #expected
@@ -119,7 +119,7 @@ class OracleTest(unittest.TestCase):
             unsigned = self.make_partially_signed_tx_with_change()
             payto = self.account.payto_for_path(TEST_PATH)
             try:
-                self.oracle.sign(unsigned, [payto], [None, payto])
+                self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
             except OracleDeferralException, e:
                 self.assertEquals(e.until, dateutil.parser.parse(until))
@@ -141,7 +141,7 @@ class OracleTest(unittest.TestCase):
             unsigned = self.make_partially_signed_tx_with_change()
             payto = self.account.payto_for_path(TEST_PATH)
             try:
-                self.oracle.sign(unsigned, [payto], [None, payto])
+                self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
             except OracleRejectionException, e:
                 pass # expected
@@ -162,7 +162,7 @@ class OracleTest(unittest.TestCase):
             unsigned = self.make_partially_signed_tx_with_change()
             payto = self.account.payto_for_path(TEST_PATH)
             try:
-                self.oracle.sign(unsigned, [payto], [None, payto])
+                self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
             except OracleLockoutException, e:
                 pass # expected

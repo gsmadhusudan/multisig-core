@@ -19,6 +19,11 @@ LOOKAHEAD = 20
 DUST = 546
 
 
+class InsufficientBalanceException(ValueError):
+    def __init__(self, balance):
+        self.balance = balance
+
+
 class AccountKey(BIP32Node):
     @classmethod
     def from_key(cls, key):
@@ -256,13 +261,13 @@ class Account(object):
             script = standard_tx_out_script(addr)
             txs_out.append(AccountTxOut(self.path_for_check(addr), total - send_amount - fee, script))
         elif total < send_amount + fee:
-            return None
+            raise InsufficientBalanceException(total)
 
         # check total >= amount + fee
         tx = AccountTx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         return tx
 
-    def sign_tx(self, tx):
+    def sign(self, tx):
         """Sign a previously constructed transaction
         :param Tx tx:
         """
