@@ -1,8 +1,11 @@
 from unittest import TestCase
+from multisigcore.hierarchy import *
+from multisigcore.testing import make_multisig_account, make_unsorted_multisig_account, TEST_PATH
 
-from multisigcore.testing import *
 from pycoin.encoding import bitcoin_address_to_hash160_sec
 from pycoin.networks import address_prefix_for_netcode
+from pycoin.scripts.tx import dump_tx
+from pycoin.serialize import h2b
 from pycoin.tx import Spendable
 from pycoin.tx.pay_to import ScriptPayToAddress
 
@@ -73,17 +76,60 @@ class HierarchyTest(TestCase):
         account._provider = MyProvider()
         self.assertEqual(1, len(account.spendables()))
         tx = account.tx([("mvccWwntgfQaj7TVYEw2C2avymxHwjixDz", 2000)])
-        account.sign_tx(tx)
+        account.sign(tx)
+
+    def test_simple_account_cache(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.address(0, False))
+        account1 = SimpleAccount(account_key, account.cache)
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account1.address(0, False))
+
+    def test_multisig_account(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        recover_key = self.master_key.account_for_path("0H/1/3H")
+        oracle_key = self.master_key.account_for_path("0H/1/4H")
+        keys = [account_key, recover_key, oracle_key]
+        account = MultisigAccount(keys=keys, sort=False)
+
+        # Create the redeem script for the provider
+        secs = [key.subkey_for_path("0/0").sec() for key in keys]
+        redeem_script = ScriptMultisig(2, secs)
+        payto_script = ScriptPayToScript(encoding.hash160(redeem_script.script()))
+
+        class MyProvider(object):
+            def spendables_for_address(self, address):
+                if address == "32pQeKJ8KzRfb3ox9Me8EHn3ud8xo6mqAu":
+                    if address != payto_script.address():
+                        raise ValueError()
+                    return [Spendable(coin_value=10000,
+                                      script=payto_script.script(),
+                                      tx_out_index=0, tx_hash=b'2'*32)]
+                else:
+                    return []
+        account._provider = MyProvider()
+        account.set_lookahead(2)
+        self.assertEqual(2, len(account.addresses()))
+        self.assertEqual(6, len(account.addresses(True)))
+        self.assertEqual("32pQeKJ8KzRfb3ox9Me8EHn3ud8xo6mqAu", account.address(0, False))
+        self.assertEqual("3QWhcX2F7PK2W7YcKobeFvjBJLxaTuKyiT", account.current_change_address())
+        self.assertEqual(10000, account.balance())
+        tx = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 2000)])
+        account.sign(tx)
+        # Countersign
+        multisigcore.local_sign(tx, [redeem_script], [oracle_key.subkey_for_path("0/0")])
+        self.assertTrue(tx.is_signature_ok(0))
 
     def test_simple_account(self):
         account_key = self.master_key.account_for_path("0H/1/2H")
         account = SimpleAccount(account_key)
+
         class MyProvider(object):
             def spendables_for_address(self, address):
                 if address == "1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec":
                     return [Spendable(coin_value=10000,
                                       script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address)).script(),
-                                      tx_out_index=0, tx_hash=b'2'*20)]
+                                      tx_out_index=0, tx_hash=b'2'*32)]
                 else:
                     return []
         account._provider = MyProvider()
@@ -93,7 +139,7 @@ class HierarchyTest(TestCase):
         self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.address(0, False))
         self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.addresses()[0])
         self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.current_address())
-        self.assertEqual("181yMj2Es6RNvoHgj6bX82r2Vm38rmHV8C", account.current_change_address())
+        self.assertEqual("19Fi5VpcosH3CtCFjd5HyveM5c4Kecirza", account.current_change_address())
         self.assertEqual(10000, account.balance())
         spendables = account.spendables()
         self.assertEqual(1, len(spendables))
@@ -103,8 +149,12 @@ class HierarchyTest(TestCase):
         self.assertEqual(2000, tx.txs_out[0].coin_value)
         self.assertEqual(7000, tx.txs_out[1].coin_value)
         self.assertEqual(b'', tx.txs_in[0].script)
-        self.assertEqual(b'2'*20, tx.txs_in[0].previous_hash)
+        self.assertEqual(b'2'*32, tx.txs_in[0].previous_hash)
         self.assertIsNotNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9000)]))
-        self.assertIsNone(account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9001)]))
-        account.sign_tx(tx)
+        with self.assertRaises(InsufficientBalanceException) as e:
+            account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9001)])
+        self.assertEqual(10000, e.exception.balance)
+        account.sign(tx)
         self.assertTrue(tx.is_signature_ok(0))
+        self.assertEqual(["0/0"], tx.input_chain_paths())
+        self.assertEqual([None, "1/0"], tx.output_chain_paths())

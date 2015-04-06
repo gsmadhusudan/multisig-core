@@ -1,5 +1,6 @@
 from __future__ import print_function
 import io
+import json
 
 import multisigcore
 from pycoin import encoding
@@ -16,6 +17,11 @@ __author__ = 'devrandom'
 
 LOOKAHEAD = 20
 DUST = 546
+
+
+class InsufficientBalanceException(ValueError):
+    def __init__(self, balance):
+        self.balance = balance
 
 
 class AccountKey(BIP32Node):
@@ -100,41 +106,79 @@ class AccountTxOut(TxOut):
         super(AccountTxOut, self).__init__(coin_value, script)
         self.path = path
 
-class Account(object):
-    __slots__ = ['num_ext_keys', 'num_int_keys', 'netcode', 'lookahead', 'address_map', '_provider']
 
-    def __init__(self, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+class AccountTx(Tx):
+    def __init__(self, txs_in, txs_out, version, unspents):
+        super(AccountTx, self).__init__(txs_in=txs_in, txs_out=txs_out, version=version, unspents=unspents)
+
+    def input_chain_paths(self):
+        return [tin.path for tin in self.txs_in]
+
+    def output_chain_paths(self):
+        return [(tout.path if isinstance(tout, AccountTxOut) else None) for tout in self.txs_out]
+
+
+class Account(object):
+    __slots__ = ['netcode', 'lookahead', 'address_map', '_provider', '_cache']
+
+    def __init__(self, netcode='BTC', cache=None):
         """
-        :param netcode:
-        :param num_ext_keys: number of issued external keys
-        :param num_int_keys: number of issued internal keys
+        :param netcode: network code
+        :param str cache: the JSON formatted cache - see the cache property
         """
-        if num_ext_keys is None:
-            num_ext_keys = 1
-        if num_int_keys is None:
-            num_int_keys = 1
-        object.__setattr__(self, 'num_ext_keys', num_ext_keys)
-        object.__setattr__(self, 'num_int_keys', num_int_keys)
         object.__setattr__(self, 'netcode', netcode)
         object.__setattr__(self, 'lookahead', LOOKAHEAD)
         self._provider = providers
+        self.address_map = None
+
+        def decode_key(dct):
+            if 'hwif' in dct:
+                return BIP32Node.from_hwif(dct['hwif'])
+            return dct
+        if cache:
+            self._cache = json.loads(cache, object_hook=decode_key)
+        else:
+            self._cache = {'keys': {}, 'issued': {'0': 1, '1': 1}}
 
     def set_lookahead(self, lookahead):
         """Set the lookahead for looking for spendables"""
         object.__setattr__(self, 'lookahead', lookahead)
 
+    @property
+    def cache(self):
+        """A JSON encoded cache.
+        Save this cache in a database in order to speed up public key and address derivation in the future.
+        Also stores the number of issued keys on the internal (change) and external (receive) subchains.
+        """
+        def encode_key(obj):
+            if isinstance(obj, BIP32Node):
+                return {'hwif': obj.hwif()}
+            raise TypeError()
+        return json.dumps(self._cache, default=encode_key)
+
     def address(self, n, change=False):
         """
         The address of leaf key n in either the public subchain or the change subchain
-        :param n: leaf key number, starts at zero
+        :param int n: leaf key number, starts at zero
         :param change: whether we want the change subchain
         :return: the address string
         :rtype: str
         """
         raise NotImplementedError()
 
+    @property
+    def num_ext_keys(self):
+        """The number of issued receive keys"""
+        return self._cache['issued']['0']
+
+    @property
+    def num_int_keys(self):
+        """The number of issued change keys"""
+        return self._cache['issued']['1']
+
     def addresses(self, do_lookahead=False):
         """
+        A list of all generated addresses
         :param do_lookahead: whether to look ahead beyond our last issued address
         :return: list of addresses
         :rtype: list of [str]
@@ -146,17 +190,19 @@ class Account(object):
 
     def make_address_map(self, do_lookahead=False):
         """
+        A map of addresses to derivation path
         :param do_lookahead: whether to look ahead beyond our last issued address
         :return: map of addresses to sub-paths
         :rtype: dict of [str, str]
         """
         lookahead = self.lookahead if do_lookahead else 0
-        address_map = {self.address(n, False): "%d/0"%(n,) for n in range(0, self.num_ext_keys + lookahead)}
-        address_map.update({self.address(n, True): "%d/1"%(n,) for n in range(0, self.num_int_keys + lookahead)})
+        address_map = {self.address(n, False): "0/%d"%(n,) for n in range(0, self.num_ext_keys + lookahead)}
+        address_map.update({self.address(n, True): "1/%d"%(n,) for n in range(0, self.num_int_keys + lookahead)})
         return address_map
 
     def spendables(self):
         """
+        A list of Spendables - unspent transaction outputs
         :return: list of spendables for our keys
         :rtype: dict of [str, Spendable]
         """
@@ -215,19 +261,19 @@ class Account(object):
             script = standard_tx_out_script(addr)
             txs_out.append(AccountTxOut(self.path_for_check(addr), total - send_amount - fee, script))
         elif total < send_amount + fee:
-            return None
+            raise InsufficientBalanceException(total)
 
         # check total >= amount + fee
-        tx = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
+        tx = AccountTx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         return tx
 
-    def sign_tx(self, tx):
+    def sign(self, tx):
         """Sign a previously constructed transaction
         :param Tx tx:
         """
         keys = self.keys_for_tx(tx)
 
-        multisigcore.local_sign(tx, None, keys)
+        multisigcore.local_sign(tx, self.collect_redeem_scripts(tx), keys)
 
     def current_address(self):
         """
@@ -265,32 +311,52 @@ class Account(object):
 
     def keys_for_tx(self, tx):
         """
-        A list of keys, matching each input
+        A list of private keys, matching each input
         :param Tx tx:
         :return: list of [pycoin.key.Key]
         """
         raise NotImplementedError()
 
+    def collect_redeem_scripts(self, tx):
+        """
+        :param Tx tx:
+        :rtype: dict or None
+        """
+        return None
+
 
 class SimpleAccount(Account):
     __slots__ = ['_key']
 
-    def __init__(self, key, num_ext_keys=None, num_int_keys=None):
+    def __init__(self, key, cache=None):
         """
         :param key:
         :type key: AccountKey
+        :param str cache: JSON formatted cache
         """
-        super(SimpleAccount, self).__init__(key._netcode, num_ext_keys, num_int_keys)
+        super(SimpleAccount, self).__init__(key._netcode, cache)
         self._key = key
 
     def address(self, n, change=False):
-        return self._key.subkey_for_path("%s/%s" % (n, 1 if change else 0)).address()
+        subchain_index = '1' if change else '0'
+        path = "%s/%s" % (subchain_index, n)
+        if path not in self._cache['keys']:
+            self._cache['keys'][path] = self._key.subkey_for_path(path + ".pub")
+        return self._cache['keys'][path].address()
 
     def keys_for_tx(self, tx):
-        return [(self._key.subkey_for_path(tin.path) if tin.path else None) for tin in tx.txs_in]
+        result = []
+        for tin in tx.txs_in:
+            if tin and tin.path:
+                # we only cache public keys - derive the private key
+                result.append(self._key.subkey_for_path(tin.path))
+            else:
+                result.append(None)
+        return result
+
 
 class MultisigAccount(Account):
-    def __init__(self, keys, num_sigs=None, sort=True, complete=True, netcode='BTC', num_ext_keys=None, num_int_keys=None):
+    def __init__(self, keys, num_sigs=None, sort=True, complete=True, netcode='BTC', cache=None):
         """
         Create a multisig account with multiple participating keys
 
@@ -299,8 +365,9 @@ class MultisigAccount(Account):
         :param num_sigs: number of required signatures
         :param complete: whether we need additional keys to complete the configuration of this account
         """
-        super(MultisigAccount, self).__init__(netcode, num_ext_keys, num_int_keys)
+        super(MultisigAccount, self).__init__(netcode, cache)
         self._keys = keys
+        self._local_key = next(iter([key for key in keys if key.is_private()]), None)  # first private key
         self._public_keys = [str(key.wallet_key(as_private=False)) for key in self._keys]
         self._num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
         self._complete = complete
@@ -352,7 +419,11 @@ class MultisigAccount(Account):
         """
         if not self._complete:
             raise Exception("account not complete")
-        subkeys = [key.subkey_for_path(path or "") for key in self._keys]
+        if path not in self._cache['keys']:
+            self._cache['keys'][path] =\
+                [key.subkey_for_path(path + ".pub") for key in self.keys]
+
+        subkeys = self._cache['keys'][path]
         secs = [key.sec() for key in subkeys]
         if self._sort:
             secs.sort()
@@ -370,6 +441,25 @@ class MultisigAccount(Account):
         script = self.script_for_path(path)
         payto = LeafPayTo(hash160=encoding.hash160(script.script()), path=path)
         return payto
+
+    def keys_for_tx(self, tx):
+        if self._local_key is None:
+            raise ValueError("no private key supplied - can't sign")
+        result = []
+        for tin in tx.txs_in:
+            if tin and tin.path:
+                # we only cache public keys - derive the private key
+                result.append(self._local_key.subkey_for_path(tin.path))
+            else:
+                result.append(None)
+        return result
+
+    def collect_redeem_scripts(self, tx):
+        raw_scripts = []
+        for tin in tx.txs_in:
+            if tin and tin.path:
+                raw_scripts.append(self.script_for_path(tin.path))
+        return raw_scripts
 
 
 class LeafPayTo(ScriptPayToScript):
