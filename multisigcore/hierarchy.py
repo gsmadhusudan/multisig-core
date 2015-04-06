@@ -3,6 +3,7 @@ import io
 import json
 
 import multisigcore
+from multisigcore.providers import BatchService
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.scripts.tx import DEFAULT_VERSION
@@ -203,15 +204,21 @@ class Account(object):
     def spendables(self):
         """
         A list of Spendables - unspent transaction outputs
-        :return: list of spendables for our keys
-        :rtype: dict of [str, Spendable]
+        :return: dict of spendables for our addresses
+        :rtype: dict[str, Spendable]
         """
         self.address_map = self.make_address_map(True)
-        spendables = {}
-        for addr in self.address_map.keys():
-            spends = self._provider.spendables_for_address(addr)
-            if spends:
-                spendables[addr] = spends
+        spendables = None
+        if isinstance(self._provider, BatchService):
+            provider = self._provider
+            """:type: BatchService"""
+            spendables = provider.spendables_for_addresses(self.address_map.keys())
+        else:
+            spendables = {}
+            for addr in self.address_map.keys():
+                spends = self._provider.spendables_for_address(addr)
+                if spends:
+                    spendables[addr] = spends
 
         return spendables
 
