@@ -182,7 +182,7 @@ class Account(object):
         A list of all generated addresses
         :param do_lookahead: whether to look ahead beyond our last issued address
         :return: list of addresses
-        :rtype: list of [str]
+        :rtype: list[str]
         """
         lookahead = self.lookahead if do_lookahead else 0
         addresses = [self.address(n, False) for n in range(0, self.num_ext_keys + lookahead)]
@@ -194,7 +194,7 @@ class Account(object):
         A map of addresses to derivation path
         :param do_lookahead: whether to look ahead beyond our last issued address
         :return: map of addresses to sub-paths
-        :rtype: dict of [str, str]
+        :rtype: dict[str, str]
         """
         lookahead = self.lookahead if do_lookahead else 0
         address_map = {self.address(n, False): "0/%d"%(n,) for n in range(0, self.num_ext_keys + lookahead)}
@@ -276,7 +276,7 @@ class Account(object):
 
     def sign(self, tx):
         """Sign a previously constructed transaction
-        :param Tx tx:
+        :type tx: Tx
         """
         keys = self.keys_for_tx(tx)
 
@@ -298,7 +298,7 @@ class Account(object):
 
     def path_for(self, addr):
         """
-        :param str addr:
+        :type addr: str
         :return: sub-path (e.g. "0/123" or "1/456")
         :rtype: str
         """
@@ -306,7 +306,7 @@ class Account(object):
 
     def path_for_check(self, addr):
         """
-        :param str addr:
+        :type addr: str
         :return: sub-path (e.g. "0/123" or "1/456")
         :rtype: str
         :raise: if we haven't issued this address
@@ -319,14 +319,14 @@ class Account(object):
     def keys_for_tx(self, tx):
         """
         A list of private keys, matching each input
-        :param Tx tx:
-        :return: list of [pycoin.key.Key]
+        :type tx: Tx
+        :return: list[pycoin.key.Key]
         """
         raise NotImplementedError()
 
     def collect_redeem_scripts(self, tx):
         """
-        :param Tx tx:
+        :type tx: Tx
         :rtype: dict or None
         """
         return None
@@ -337,7 +337,6 @@ class SimpleAccount(Account):
 
     def __init__(self, key, cache=None):
         """
-        :param key:
         :type key: AccountKey
         :param str cache: JSON formatted cache
         """
