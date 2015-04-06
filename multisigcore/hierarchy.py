@@ -31,7 +31,7 @@ class AccountKey(BIP32Node):
         return cls.from_hwif(key)
 
     def leaf(self, n, change=False):
-        return self.leaf_for_path("%s/%s" % (n, 1 if change else 0))
+        return self.leaf_for_path("%s/%s" % (1 if change else 0, n))
 
     def leaf_for_path(self, path):
         return self.subkey_for_path(path)
@@ -407,10 +407,10 @@ class MultisigAccount(Account):
         self._complete = True
 
     def leaf_script(self, n, change=False):
-        return self.script_for_path("%s/%s" % (n, 1 if change else 0))
+        return self.script_for_path("%s/%s" % (1 if change else 0, n))
 
     def leaf_payto(self, n, change=False):
-        return self.payto_for_path("%s/%s" % (n, 1 if change else 0))
+        return self.payto_for_path("%s/%s" % (1 if change else 0, n))
 
     def address(self, n, change=False):
         return self.leaf_payto(n, change).address(self.netcode)
