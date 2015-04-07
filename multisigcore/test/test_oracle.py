@@ -199,7 +199,10 @@ class OracleTest(unittest.TestCase):
         self._request = None
         def digitaloracle_mock(url, request):
             self._request = request
-            return json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z"}).encode("utf8")
+            return {
+                "status_code": 200,
+                "content": json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z"}).encode("utf8")
+            }
 
         with HTTMock(digitaloracle_mock):
             personal_info = PersonalInformation(email="a@b.com", phone="+14155551212")
