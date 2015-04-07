@@ -93,7 +93,7 @@ class HierarchyTest(TestCase):
                 results = {}
                 for address in addresses:
                     if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
-                        results[addresses[0]] =\
+                        results[address] =\
                             [Spendable(coin_value=10000,
                                        script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN'))).script(),
                                        tx_out_index=0, tx_hash=b'2'*32)]

@@ -67,7 +67,7 @@ class OracleTest(unittest.TestCase):
             self._request = request
             return {
                 "status_code": 200,
-                "content": json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z", "spendId": "aaa"})
+                "content": json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z", "spendId": "aaa"}).encode("utf8")
             }
 
         with HTTMock(digitaloracle_mock):
@@ -89,7 +89,7 @@ class OracleTest(unittest.TestCase):
             self._request = request
             return {
                 "status_code": 400,
-                "content": json.dumps({"error": "failed"})
+                "content": json.dumps({"error": "failed"}).encode("utf8")
             }
 
         with HTTMock(digitaloracle_mock):
@@ -98,7 +98,7 @@ class OracleTest(unittest.TestCase):
             try:
                 self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
-            except OracleError, e:
+            except OracleError as e:
                 pass #expected
 
     def test_sign_defer(self):
@@ -112,7 +112,7 @@ class OracleTest(unittest.TestCase):
                 "content": json.dumps({"result": "deferred",
                                        "now": "2010-01-01 00:00:00Z",
                                        "spendId": "aaa",
-                                       "deferral": {"reason": "delay", "until": until, "verifications":["otp"]}})
+                                       "deferral": {"reason": "delay", "until": until, "verifications":["otp"]}}).encode("utf8")
             }
 
         with HTTMock(digitaloracle_mock):
@@ -121,7 +121,7 @@ class OracleTest(unittest.TestCase):
             try:
                 self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
-            except OracleDeferralException, e:
+            except OracleDeferralException as e:
                 self.assertEquals(e.until, dateutil.parser.parse(until))
                 self.assertEquals(e.verifications, ["otp"])
 
@@ -134,7 +134,7 @@ class OracleTest(unittest.TestCase):
             return {
                 "status_code": 200,
                 "content": json.dumps({"result": "rejected",
-                                       "now": "2010-01-01 00:00:00Z"})
+                                       "now": "2010-01-01 00:00:00Z"}).encode("utf8")
             }
 
         with HTTMock(digitaloracle_mock):
@@ -143,7 +143,7 @@ class OracleTest(unittest.TestCase):
             try:
                 self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
-            except OracleRejectionException, e:
+            except OracleRejectionException as e:
                 pass # expected
 
     def test_sign_lockout(self):
@@ -155,7 +155,7 @@ class OracleTest(unittest.TestCase):
             return {
                 "status_code": 200,
                 "content": json.dumps({"result": "locked",
-                                       "now": "2010-01-01 00:00:00Z"})
+                                       "now": "2010-01-01 00:00:00Z"}).encode("utf8")
             }
 
         with HTTMock(digitaloracle_mock):
@@ -164,7 +164,7 @@ class OracleTest(unittest.TestCase):
             try:
                 self.oracle.sign_with_paths(unsigned, [TEST_PATH], [None, TEST_PATH])
                 self.fail()
-            except OracleLockoutException, e:
+            except OracleLockoutException as e:
                 pass # expected
 
     def test_create(self):
@@ -181,7 +181,10 @@ class OracleTest(unittest.TestCase):
 
         def digitaloracle_mock(url, request):
             self._request = request
-            return json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z", "keys": {"default": [oracle_key.hwif()]}})
+            return {
+                "status_code": 200,
+                "content": json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z", "keys": {"default": [oracle_key.hwif()]}}).encode('utf8')
+            }
 
         with HTTMock(digitaloracle_mock):
             personal_info = PersonalInformation(email="a@b.com")
@@ -196,7 +199,7 @@ class OracleTest(unittest.TestCase):
         self._request = None
         def digitaloracle_mock(url, request):
             self._request = request
-            return json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z"})
+            return json.dumps({"result": "success", "now": "2010-01-01 00:00:00Z"}).encode("utf8")
 
         with HTTMock(digitaloracle_mock):
             personal_info = PersonalInformation(email="a@b.com", phone="+14155551212")
