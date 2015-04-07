@@ -8,6 +8,7 @@ setup(
     packages=[
         'multisigcore',
         'multisigcore.scripts',
+        'multisigcore.providers',
     ],
     url='https://cryptocorp.co/api',
     license='http://opensource.org/licenses/MIT',
