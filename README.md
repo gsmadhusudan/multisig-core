@@ -1,4 +1,5 @@
 BitOasis / CryptoCorp's Multisig python API implementation using the pycoin library.
+[![Build Status](https://travis-ci.org/devrandom/multisig-core.svg?branch=master)](https://travis-ci.org/devrandom/multisig-core)
 
 Currently this requires the `p2sh` branch of `https://github.com/devrandom/pycoin.git`.
 
