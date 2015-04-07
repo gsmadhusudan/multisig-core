@@ -2,7 +2,7 @@ from __future__ import print_function
 import io
 import json
 
-from multisigcore import local_sign
+import multisigcore
 from .providers import BatchService
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
@@ -280,7 +280,7 @@ class Account(object):
         """
         keys = self.keys_for_tx(tx)
 
-        local_sign(tx, self.collect_redeem_scripts(tx), keys)
+        multisigcore.local_sign(tx, self.collect_redeem_scripts(tx), keys)
 
     def current_address(self):
         """

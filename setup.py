@@ -1,6 +1,19 @@
 #!/usr/bin/env python
 
 from setuptools import setup
+import sys
+from setuptools.command.test import test as TestCommand
+
+
+class PyTest(TestCommand):
+    def finalize_options(self):
+        TestCommand.finalize_options(self)
+        self.test_args = ["multisigcore/test"]
+
+    def run_tests(self):
+        import pytest
+        errcode = pytest.main(self.test_args)
+        sys.exit(errcode)
 
 setup(
     name='multisig-core',
@@ -9,11 +22,13 @@ setup(
         'multisigcore',
         'multisigcore.scripts',
         'multisigcore.providers',
+        'multisigcore.test'
     ],
     url='https://cryptocorp.co/api',
     license='http://opensource.org/licenses/MIT',
     author='devrandom',
     author_email='info@cryptocorp.co',
+    cmdclass={'test': PyTest},
     entry_points={
         'console_scripts':
             [
@@ -31,13 +46,15 @@ setup(
         'Topic :: Internet',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
-    requires=[
+    install_requires=[
         'pycoin',
-        'requests'
+        'requests',
+        'python-dateutil'
     ],
     tests_require=[
         'httmock',
-        'mock'
+        'mock',
+        'pytest'
     ],
-    test_suite='tests',
+    test_suite='multisigcore.test',
 )
