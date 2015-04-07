@@ -57,8 +57,13 @@ class HierarchyTest(TestCase):
         # Happens to already be sorted
         self.assertEqual("3MhrgJ9BtL3GTsUU6EqAqDGKdUAv8C15EN", uma.address(0))
 
-        self.assertEqual("3NgaSSt2qhSY28viYuYQQkmP2K6KuU2MXj", self.multisig_account.address(1))
-        self.assertEqual("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", uma.address(1))
+        self.assertEqual("3CWheC3YFPXAxVPBKkevMV5YFhy2h2oVSu", self.multisig_account.address(1))
+        # Happens to already be sorted
+        self.assertEqual("3CWheC3YFPXAxVPBKkevMV5YFhy2h2oVSu", uma.address(1))
+
+        self.assertEqual("335QrAenpWLGFRNZT7VpzbkT1bPzRUkWna", self.multisig_account.address(2))
+        # Sort generates different address for this index
+        self.assertEqual("3Qc7D1EiXhGdZo7szB2VpQUnbBx6hAWtzm", uma.address(2))
 
     def test_simple_account_testnet(self):
         master_key = MasterKey.from_seed(h2b("000102030405060708090a0b0c0d0e0f"), netcode='XTN')
@@ -130,7 +135,7 @@ class HierarchyTest(TestCase):
         self.assertEqual(2, len(account.addresses()))
         self.assertEqual(6, len(account.addresses(True)))
         self.assertEqual("32pQeKJ8KzRfb3ox9Me8EHn3ud8xo6mqAu", account.address(0, False))
-        self.assertEqual("3QWhcX2F7PK2W7YcKobeFvjBJLxaTuKyiT", account.current_change_address())
+        self.assertEqual("3QdW9Lr7sX5M2XmsukWg87tXcM6bj6aTV4", account.current_change_address())
         self.assertEqual(10000, account.balance())
         tx = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 2000)])
         account.sign(tx)
