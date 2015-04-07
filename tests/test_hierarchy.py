@@ -70,13 +70,31 @@ class HierarchyTest(TestCase):
                 if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
                     return [Spendable(coin_value=10000,
                                       script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN'))).script(),
-                                      tx_out_index=0, tx_hash=b'2'*20)]
+                                      tx_out_index=0, tx_hash=b'2'*32)]
                 else:
                     return []
         account._provider = MyProvider()
         self.assertEqual(1, len(account.spendables()))
         tx = account.tx([("mvccWwntgfQaj7TVYEw2C2avymxHwjixDz", 2000)])
         account.sign(tx)
+
+    def test_simple_account_testnet_batch(self):
+        master_key = MasterKey.from_seed(h2b("000102030405060708090a0b0c0d0e0f"), netcode='XTN')
+        account_key = master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+
+        class MyProvider(BatchService):
+            def spendables_for_addresses(self, addresses):
+                results = {}
+                for address in addresses:
+                    if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
+                        results[addresses[0]] =\
+                            [Spendable(coin_value=10000,
+                                       script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN'))).script(),
+                                       tx_out_index=0, tx_hash=b'2'*32)]
+                return results
+        account._provider = MyProvider()
+        self.assertEqual(1, len(account.spendables()))
 
     def test_simple_account_cache(self):
         account_key = self.master_key.account_for_path("0H/1/2H")
