@@ -297,6 +297,14 @@ class Account(object):
         """
         return self.address(self.num_int_keys - 1, True)
 
+    def next_address(self):
+        self._cache['issued']['0'] += 1
+        return self.current_address()
+
+    def next_change_address(self):
+        self._cache['issued']['1'] += 1
+        return self.current_change_address()
+
     def path_for(self, addr):
         """
         :type addr: str

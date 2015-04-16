@@ -181,3 +181,15 @@ class HierarchyTest(TestCase):
         self.assertTrue(tx.is_signature_ok(0))
         self.assertEqual(["0/0"], tx.input_chain_paths())
         self.assertEqual([None, "1/0"], tx.output_chain_paths())
+
+    def test_next_address(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.current_address())
+        self.assertEqual("181yMj2Es6RNvoHgj6bX82r2Vm38rmHV8C", account.next_address())
+        self.assertEqual("181yMj2Es6RNvoHgj6bX82r2Vm38rmHV8C", account.current_address())
+        self.assertEqual("1AdEBCFQJHBzHKgWX517rQWCWwQ6qvYfAB", account.next_change_address())
+        self.assertEqual("1AdEBCFQJHBzHKgWX517rQWCWwQ6qvYfAB", account.current_change_address())
+        account1 = SimpleAccount(account_key, cache=account.cache)
+        self.assertEqual("181yMj2Es6RNvoHgj6bX82r2Vm38rmHV8C", account1.current_address())
+        self.assertEqual("1AdEBCFQJHBzHKgWX517rQWCWwQ6qvYfAB", account1.current_change_address())
