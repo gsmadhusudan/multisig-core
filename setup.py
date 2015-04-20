@@ -48,6 +48,7 @@ setup(
     install_requires=[
         'pycoin',
         'requests',
+        'urllib3',
         'python-dateutil'
     ],
     tests_require=[
