@@ -8,11 +8,11 @@ from .providers import BatchService
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.scripts.tx import DEFAULT_VERSION
-from pycoin.serialize import h2b
+from pycoin.serialize import h2b, b2h
 from pycoin.services import providers
 from pycoin.tx import Tx, TxOut, TxIn
 from pycoin.tx.TxOut import standard_tx_out_script
-from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
+from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript, ScriptPayToAddress
 
 
 __author__ = 'devrandom'
@@ -206,7 +206,6 @@ class Account(object):
         """
         A list of Spendables - unspent transaction outputs
         :return: dict of spendables for our addresses
-        :rtype: dict[str, Spendable]
         """
         self.address_map = self.make_address_map(True)
         spendables = None
@@ -215,19 +214,36 @@ class Account(object):
             """:type: BatchService"""
             spendables = provider.spendables_for_addresses(self.address_map.keys())
         else:
-            spendables = {}
+            spendables = []
             for addr in self.address_map.keys():
                 spends = self._provider.spendables_for_address(addr)
                 if spends:
-                    spendables[addr] = spends
+                    spendables.extend(spends)
 
         return spendables
 
     def balance(self):
         """Total balance in spendables for our keys"""
         spendables = self.spendables()
-        total = reduce(lambda x,y: x+y, [s.coin_value for sublist in spendables.values() for s in sublist], 0)
+        total = reduce(lambda x,y: x+y, [s.coin_value for s in spendables], 0)
         return total
+
+    def address_from_spend(self, spend):
+        script = None
+        """:type: ScriptType"""
+        try:
+            script = ScriptPayToScript.from_script(spend.script)
+        except Exception:
+            script = ScriptPayToAddress.from_script(spend.script)
+
+        # explicitly call info() because pycoin script.address(netcode) disregards the netcode
+        addr = script.info(self.netcode)['address']
+        return addr
+
+    def add_spend(self, spend, spendables, txs_in):
+        addr = self.address_from_spend(spend)
+        spendables.append(spend)
+        txs_in.append(AccountTxIn(self.path_for_check(addr), spend.tx_hash, spend.tx_out_index, script=b''))
 
     def tx(self, payables):
         """
@@ -235,7 +251,7 @@ class Account(object):
         :param list[(str, int)] payables: tuple of address and amount
         :return Tx or None: the transaction or None if not enough balance
         """
-        all_spendables = [(s, addr) for (addr, sublist) in self.spendables().items() for s in sublist]
+        all_spendables = self.spendables()
 
         send_amount = 0
         for address, coin_value in payables:
@@ -250,18 +266,16 @@ class Account(object):
         txs_in = []
         spendables = []
         while total < send_amount and all_spendables:
-            (spend, addr) = all_spendables.pop(0)
-            spendables.append(spend)
-            txs_in.append(AccountTxIn(self.path_for(addr), spend.tx_hash, spend.tx_out_index, script=b''))
+            spend = all_spendables.pop(0)
+            self.add_spend(spend, spendables, txs_in)
             total += spend.coin_value
 
         tx_for_fee = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         fee = recommended_fee_for_tx(tx_for_fee)
 
         while total < send_amount + fee and all_spendables:
-            (spend, addr) = all_spendables.pop(0)
-            spendables.append(spend)
-            txs_in.append(AccountTxIn(self.path_for_check(addr), spend.tx_hash, spend.tx_out_index, script=b''))
+            spend = all_spendables.pop(0)
+            self.add_spend(spend, spendables, txs_in)
             total += spend.coin_value
 
         if total > send_amount + fee + DUST:

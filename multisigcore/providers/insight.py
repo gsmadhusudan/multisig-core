@@ -4,12 +4,14 @@ from pycoin.convention import btc_to_satoshi
 from pycoin.serialize import h2b, h2b_rev
 from pycoin.services.insight import InsightService
 from pycoin.tx import Spendable
+from . import BatchService
 
 __author__ = 'devrandom'
 
 CHUNK_SIZE = 100
 
-class InsightBatchService(InsightService):
+
+class InsightBatchService(InsightService, BatchService):
     def __init__(self, base_url):
         InsightService.__init__(self, base_url)
 

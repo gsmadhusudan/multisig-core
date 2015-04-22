@@ -73,8 +73,10 @@ class HierarchyTest(TestCase):
         class MyProvider(object):
             def spendables_for_address(self, address):
                 if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
+                    script = ScriptPayToAddress(
+                        bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN')))
                     return [Spendable(coin_value=10000,
-                                      script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN'))).script(),
+                                      script=script.script(),
                                       tx_out_index=0, tx_hash=b'2'*32)]
                 else:
                     return []
