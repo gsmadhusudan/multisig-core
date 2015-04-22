@@ -12,6 +12,27 @@ from pycoin.tx.pay_to import ScriptPayToAddress
 __author__ = 'devrandom'
 
 
+class MySimpleTestnetProvider(object):
+    def spendables_for_address(self, address):
+        if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
+            script = ScriptPayToAddress(
+                bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN')))
+            return [Spendable(coin_value=10000,
+                              script=script.script(),
+                              tx_out_index=0, tx_hash=b'2'*32)]
+        else:
+            return []
+
+
+class MySimpleProvider(object):
+    def spendables_for_address(self, address):
+        if address == "1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec":
+            return [Spendable(coin_value=10000,
+                              script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address)).script(),
+                              tx_out_index=0, tx_hash=b'2'*32)]
+        else:
+            return []
+
 class HierarchyTest(TestCase):
     def setUp(self):
         self.master_key = MasterKey.from_seed(h2b("000102030405060708090a0b0c0d0e0f"))
@@ -70,17 +91,7 @@ class HierarchyTest(TestCase):
         account_key = master_key.account_for_path("0H/1/2H")
         account = SimpleAccount(account_key)
         self.assertEqual('mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR', account.current_address())
-        class MyProvider(object):
-            def spendables_for_address(self, address):
-                if address == "mgMy4vmqChGT8XeKPb1zD6RURWsiNmoNvR":
-                    script = ScriptPayToAddress(
-                        bitcoin_address_to_hash160_sec(address, address_prefix_for_netcode('XTN')))
-                    return [Spendable(coin_value=10000,
-                                      script=script.script(),
-                                      tx_out_index=0, tx_hash=b'2'*32)]
-                else:
-                    return []
-        account._provider = MyProvider()
+        account._provider = MySimpleTestnetProvider()
         self.assertEqual(1, len(account.spendables()))
         tx = account.tx([("mvccWwntgfQaj7TVYEw2C2avymxHwjixDz", 2000)])
         account.sign(tx)
@@ -149,15 +160,7 @@ class HierarchyTest(TestCase):
         account_key = self.master_key.account_for_path("0H/1/2H")
         account = SimpleAccount(account_key)
 
-        class MyProvider(object):
-            def spendables_for_address(self, address):
-                if address == "1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec":
-                    return [Spendable(coin_value=10000,
-                                      script=ScriptPayToAddress(bitcoin_address_to_hash160_sec(address)).script(),
-                                      tx_out_index=0, tx_hash=b'2'*32)]
-                else:
-                    return []
-        account._provider = MyProvider()
+        account._provider = MySimpleProvider()
         account.set_lookahead(2)
         self.assertEqual(2, len(account.addresses()))
         self.assertEqual(6, len(account.addresses(True)))
@@ -179,6 +182,27 @@ class HierarchyTest(TestCase):
         with self.assertRaises(InsufficientBalanceException) as e:
             account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 9001)])
         self.assertEqual(10000, e.exception.balance)
+        account.sign(tx)
+        self.assertTrue(tx.is_signature_ok(0))
+        self.assertEqual(["0/0"], tx.input_chain_paths())
+        self.assertEqual([None, "1/0"], tx.output_chain_paths())
+
+    def test_tx_serialize(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+
+        account._provider = MySimpleProvider()
+        account.set_lookahead(2)
+        spendables = account.spendables()
+        self.assertEqual(1, len(spendables))
+        tx1 = account.tx([("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi", 2000)])
+        tx = AccountTx.deserialize(tx1.serialize())
+        self.assertEqual(1, len(tx.txs_in))
+        self.assertEqual(2, len(tx.txs_out))
+        self.assertEqual(2000, tx.txs_out[0].coin_value)
+        self.assertEqual(7000, tx.txs_out[1].coin_value)
+        self.assertEqual(b'', tx.txs_in[0].script)
+        self.assertEqual(b'2'*32, tx.txs_in[0].previous_hash)
         account.sign(tx)
         self.assertTrue(tx.is_signature_ok(0))
         self.assertEqual(["0/0"], tx.input_chain_paths())
