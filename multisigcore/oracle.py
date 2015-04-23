@@ -5,6 +5,7 @@ import uuid
 import dateutil.tz
 import dateutil.parser
 import requests
+from copy import deepcopy
 
 from pycoin.tx import Tx
 from pycoin.ecdsa import generator_secp256k1
@@ -139,6 +140,7 @@ class Oracle(object):
 
     def _create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx, verifications=None):
         """:nodoc:"""
+        tx = deepcopy(tx)  # keep original Tx object intact
         # Have the Oracle sign the tx
         chain_paths = []
         input_scripts = []
