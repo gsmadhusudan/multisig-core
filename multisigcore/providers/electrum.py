@@ -72,12 +72,11 @@ class ElectrumService(BatchService):
 
         thread = MyThread(self.sock)
         thread.start()
-        results = [
-            self.decode_spendables(address, json.loads(self.sock_file.readline()))
-            for address in addresses
-        ]
+        results = []
+        for address in addresses:
+            results.extend(self.decode_spendables(address, json.loads(self.sock_file.readline())))
         thread.join()
-        return {addr: r for (addr, r) in zip(addresses, results)}
+        return results
 
 if __name__ == '__main__':
     s = ElectrumService("electrum.no-ip.org", 50002)

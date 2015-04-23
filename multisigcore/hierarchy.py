@@ -8,11 +8,12 @@ from .providers import BatchService
 from pycoin import encoding
 from pycoin.key.BIP32Node import BIP32Node
 from pycoin.scripts.tx import DEFAULT_VERSION
-from pycoin.serialize import h2b
+from pycoin.serialize import h2b, b2h
+from pycoin.serialize.bitcoin_streamer import parse_struct
 from pycoin.services import providers
 from pycoin.tx import Tx, TxOut, TxIn
 from pycoin.tx.TxOut import standard_tx_out_script
-from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript
+from pycoin.tx.pay_to import ScriptMultisig, ScriptPayToScript, ScriptPayToAddress
 
 
 __author__ = 'devrandom'
@@ -98,20 +99,20 @@ def recommended_fee_for_tx(tx):
 
 
 class AccountTxIn(TxIn):
-    def __init__(self, path, previous_hash, previous_index, script=b'', sequence=4294967295):
+    def __init__(self, previous_hash, previous_index, script=b'', sequence=4294967295, path=None):
         super(AccountTxIn, self).__init__(previous_hash, previous_index, script, sequence)
         self.path = path
 
 
 class AccountTxOut(TxOut):
-    def __init__(self, path, coin_value, script):
+    def __init__(self, coin_value, script, path=None):
         super(AccountTxOut, self).__init__(coin_value, script)
         self.path = path
 
 
 class AccountTx(Tx):
-    def __init__(self, txs_in, txs_out, version, unspents):
-        super(AccountTx, self).__init__(txs_in=txs_in, txs_out=txs_out, version=version, unspents=unspents)
+    def __init__(self, version, txs_in, txs_out, locktime=0, unspents=[]):
+        super(AccountTx, self).__init__(version, txs_in, txs_out, locktime, unspents)
 
     def input_chain_paths(self):
         return [tin.path for tin in self.txs_in]
@@ -119,6 +120,53 @@ class AccountTx(Tx):
     def output_chain_paths(self):
         return [(tout.path if isinstance(tout, AccountTxOut) else None) for tout in self.txs_out]
 
+    def serialize(self):
+        """
+        Serialize to a JSON blob, so that the transaction can be retried at a later time.
+        Includes transaction, unspents and chain paths.
+        """
+        unspent_stream = io.BytesIO()
+        self.stream_unspents(unspent_stream)
+        res = {
+            'tx': self.as_hex(),
+            'unspents': b2h(unspent_stream.getvalue()),
+            'input_chain_paths': [i.path for i in self.txs_in],
+            'output_chain_paths': [(o.path if isinstance(o, AccountTxOut) else None) for o in self.txs_out],
+        }
+        return json.dumps(res)
+
+    @classmethod
+    def parse_with_paths(class_, f, input_chain_paths, output_chain_paths):
+        """Parse a Bitcoin transaction AccountTx from the file-like object f, attaching relevant chain paths."""
+        version, count = parse_struct("LI", f)
+        txs_in = []
+        for i in range(count):
+            txin = AccountTxIn.parse(f)
+            txin.path = input_chain_paths[i]
+            txs_in.append(txin)
+        count, = parse_struct("I", f)
+        txs_out = []
+        for i in range(count):
+            path = output_chain_paths[i]
+            if path:
+                txout = AccountTxOut.parse(f)
+                txout.path = path
+            else:
+                txout = TxOut.parse(f)
+            txs_out.append(txout)
+        lock_time, = parse_struct("L", f)
+        return class_(version, txs_in, txs_out, lock_time)
+
+    @classmethod
+    def deserialize(class_, blob):
+        """
+        Deserialize from a JSON blob, so that the transaction can be retried.
+        Includes transaction, unspents and chain paths.
+        """
+        d = json.loads(blob)
+        tx = class_.parse_with_paths(io.BytesIO(h2b(d['tx'])), d['input_chain_paths'], d['output_chain_paths'])
+        tx.parse_unspents(io.BytesIO(h2b(d['unspents'])))
+        return tx
 
 class Account(object):
     __slots__ = ['netcode', 'lookahead', 'address_map', '_provider', '_cache']
@@ -206,7 +254,6 @@ class Account(object):
         """
         A list of Spendables - unspent transaction outputs
         :return: dict of spendables for our addresses
-        :rtype: dict[str, Spendable]
         """
         self.address_map = self.make_address_map(True)
         spendables = None
@@ -215,19 +262,36 @@ class Account(object):
             """:type: BatchService"""
             spendables = provider.spendables_for_addresses(self.address_map.keys())
         else:
-            spendables = {}
+            spendables = []
             for addr in self.address_map.keys():
                 spends = self._provider.spendables_for_address(addr)
                 if spends:
-                    spendables[addr] = spends
+                    spendables.extend(spends)
 
         return spendables
 
     def balance(self):
         """Total balance in spendables for our keys"""
         spendables = self.spendables()
-        total = reduce(lambda x,y: x+y, [s.coin_value for sublist in spendables.values() for s in sublist], 0)
+        total = reduce(lambda x,y: x+y, [s.coin_value for s in spendables], 0)
         return total
+
+    def address_from_spend(self, spend):
+        script = None
+        """:type: ScriptType"""
+        try:
+            script = ScriptPayToScript.from_script(spend.script)
+        except Exception:
+            script = ScriptPayToAddress.from_script(spend.script)
+
+        # explicitly call info() because pycoin script.address(netcode) disregards the netcode
+        addr = script.info(self.netcode)['address']
+        return addr
+
+    def add_spend(self, spend, spendables, txs_in):
+        addr = self.address_from_spend(spend)
+        spendables.append(spend)
+        txs_in.append(AccountTxIn(spend.tx_hash, spend.tx_out_index, script=b'', sequence=4294967295, path=self.path_for_check(addr)))
 
     def tx(self, payables):
         """
@@ -235,7 +299,7 @@ class Account(object):
         :param list[(str, int)] payables: tuple of address and amount
         :return Tx or None: the transaction or None if not enough balance
         """
-        all_spendables = [(s, addr) for (addr, sublist) in self.spendables().items() for s in sublist]
+        all_spendables = self.spendables()
 
         send_amount = 0
         for address, coin_value in payables:
@@ -250,29 +314,27 @@ class Account(object):
         txs_in = []
         spendables = []
         while total < send_amount and all_spendables:
-            (spend, addr) = all_spendables.pop(0)
-            spendables.append(spend)
-            txs_in.append(AccountTxIn(self.path_for(addr), spend.tx_hash, spend.tx_out_index, script=b''))
+            spend = all_spendables.pop(0)
+            self.add_spend(spend, spendables, txs_in)
             total += spend.coin_value
 
         tx_for_fee = Tx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
         fee = recommended_fee_for_tx(tx_for_fee)
 
         while total < send_amount + fee and all_spendables:
-            (spend, addr) = all_spendables.pop(0)
-            spendables.append(spend)
-            txs_in.append(AccountTxIn(self.path_for_check(addr), spend.tx_hash, spend.tx_out_index, script=b''))
+            spend = all_spendables.pop(0)
+            self.add_spend(spend, spendables, txs_in)
             total += spend.coin_value
 
         if total > send_amount + fee + DUST:
             addr = self.current_change_address()
             script = standard_tx_out_script(addr)
-            txs_out.append(AccountTxOut(self.path_for_check(addr), total - send_amount - fee, script))
+            txs_out.append(AccountTxOut(total - send_amount - fee, script, self.path_for_check(addr)))
         elif total < send_amount + fee:
             raise InsufficientBalanceException(total)
 
         # check total >= amount + fee
-        tx = AccountTx(txs_in=txs_in, txs_out=txs_out, version=DEFAULT_VERSION, unspents=spendables)
+        tx = AccountTx(version=DEFAULT_VERSION, txs_in=txs_in, txs_out=txs_out, unspents=spendables)
         return tx
 
     def sign(self, tx):
