@@ -293,7 +293,7 @@ class Account(object):
         spendables.append(spend)
         txs_in.append(AccountTxIn(spend.tx_hash, spend.tx_out_index, script=b'', sequence=4294967295, path=self.path_for_check(addr)))
 
-    def tx(self, payables):
+    def tx(self, payables, change_address=None):
         """
         Construct a transaction with available spendables
         :param list[(str, int)] payables: tuple of address and amount
@@ -327,7 +327,7 @@ class Account(object):
             total += spend.coin_value
 
         if total > send_amount + fee + DUST:
-            addr = self.current_change_address()
+            addr = change_address or self.current_change_address()
             script = standard_tx_out_script(addr)
             txs_out.append(AccountTxOut(total - send_amount - fee, script, self.path_for_check(addr)))
         elif total < send_amount + fee:
