@@ -123,6 +123,7 @@ class Oracle(object):
         self.base_url = base_url or 'https://s.digitaloracle.co/'
         self.num_oracle_keys = num_oracle_keys
         self.verbose = 0
+        self._account.add_oracle(self)
 
     @property
     def account(self):
