@@ -219,3 +219,18 @@ class HierarchyTest(TestCase):
         account1 = SimpleAccount(account_key, cache=account.cache)
         self.assertEqual("181yMj2Es6RNvoHgj6bX82r2Vm38rmHV8C", account1.current_address())
         self.assertEqual("1AdEBCFQJHBzHKgWX517rQWCWwQ6qvYfAB", account1.current_change_address())
+
+    def test_rotate_address(self):
+        account_key = self.master_key.account_for_path("0H/1/2H")
+        account = SimpleAccount(account_key)
+        first = "1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec"
+        first_change = "19Fi5VpcosH3CtCFjd5HyveM5c4Kecirza"
+        self.assertEqual(first, account.current_address())
+        self.assertEqual(first_change, account.current_change_address())
+        tx = Tx(DEFAULT_VERSION, [], [TxOut(1, standard_tx_out_script("3FfiLhj1yXkXRFRRb9CMsMXBNZXQEv23Pi"))])
+        account.rotate_addresses(tx)
+        self.assertEqual("1r1msgrPfqCMRAhg23cPBD9ZXH1UQ6jec", account.current_address())
+        tx = Tx(DEFAULT_VERSION, [], [TxOut(1, standard_tx_out_script(first)), TxOut(33, standard_tx_out_script(first_change))])
+        self.assertTrue(account.rotate_addresses(tx))
+        self.assertNotEqual(first, account.current_address())
+        self.assertNotEqual(first_change, account.current_change_address())

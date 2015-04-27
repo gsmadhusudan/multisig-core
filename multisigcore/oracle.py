@@ -140,7 +140,7 @@ class Oracle(object):
 
     def _create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx, verifications=None):
         """:nodoc:"""
-        tx = deepcopy(tx)  # keep original Tx object intact
+        tx = deepcopy(tx)  # keep original Tx object intact, so that it is not mutated by fix_input_scripts below.
         # Have the Oracle sign the tx
         chain_paths = []
         input_scripts = []

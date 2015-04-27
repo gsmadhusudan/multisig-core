@@ -402,6 +402,24 @@ class Account(object):
         """
         return None
 
+    def rotate_addresses(self, tx):
+        """
+        Rotate receiving and change addresses if a transaction sent coins to them.
+        :type tx: Tx
+        :return: whether any addresses were rotated due to incoming coins
+        :rtype: bool
+        """
+        scripts = [o.script for o in tx.txs_out]
+        rotated = False
+        while standard_tx_out_script(self.current_address()) in scripts:
+            self.next_address()
+            rotated = True
+
+        while standard_tx_out_script(self.current_change_address()) in scripts:
+            self.next_change_address()
+            rotated = True
+        return rotated
+
 
 class SimpleAccount(Account):
     __slots__ = ['_key']
