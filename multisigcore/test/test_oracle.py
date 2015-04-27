@@ -33,6 +33,9 @@ class OracleTest(unittest.TestCase):
         local_sign(unsigned, [script], [child_key])
         return unsigned
 
+    def test_pointers(self):
+        self.assertEqual([self.oracle], self.account.oracles)
+
     def test_sign_request(self):
         # generated with `tx -i 34DjTcNWGReJV4xx7R1AWK7FTz3xMwMcjA  3Ph5UGYHCyvYFQifw76T8iqKL9EkGKDBMz/100000 -o tx.hex`
         unsigned = self.make_partially_signed_tx()

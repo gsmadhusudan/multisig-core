@@ -467,6 +467,7 @@ class MultisigAccount(Account):
         self._num_sigs = num_sigs if num_sigs else len(keys) - (1 if complete else 0)
         self._complete = complete
         self._sort = sort
+        self._oracles = []
 
     @property
     def complete(self):
@@ -479,6 +480,13 @@ class MultisigAccount(Account):
     @property
     def keys(self):
         return self._keys
+
+    @property
+    def oracles(self):
+        return self._oracles
+
+    def add_oracle(self, oracle):
+        self._oracles.append(oracle)
 
     def add_key(self, key):
         if self._complete:
