@@ -61,6 +61,11 @@ class OracleCannotCallException(OracleException):
     pass
 
 
+class OraclePlatformVelocityHardLimitException(OracleException):
+    """This transaction is over platform-wide velocity limit. Consider increasing velocity limits."""
+    pass
+
+
 class OracleDeferralException(OracleException):
     """Deferred transaction due to required verifications and/or delay"""
 
@@ -241,6 +246,8 @@ class Oracle(object):
             raise OracleRejectionException()
         elif result.get('result') == 'locked':
             raise OracleLockoutException()
+        elif result.get('error') == 'Platform  velocity  hard-limit  exceeded':
+            raise OraclePlatformVelocityHardLimitException('Platform  velocity  hard-limit  exceeded')
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:
