@@ -61,8 +61,8 @@ class HierarchyTest(TestCase):
         l = a.leaf(0)
         self.assertEqual(l.address(), "1AGWXxRe7FwWJJ6k5uAfwcoA7Sov9AYNVK")
         # Simulate generation of an Electrum master public key for the 1of1 hierarchy
-        em = ElectrumMasterKey.from_key(m.account_for_path("0H").hwif())
-        a1 = em.electrum_account(0)
+        em = MasterKey.from_key(m.account_for_path("0H").hwif())
+        a1 = em.bip32_account(0, hardened=False)
         self.assertEqual(a.hwif(), a1.hwif())
 
     def test_multisig_payto(self):
