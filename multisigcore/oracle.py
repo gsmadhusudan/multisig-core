@@ -61,6 +61,11 @@ class OracleCannotCallException(OracleException):
     pass
 
 
+class OraclePlatformVelocityHardLimitException(OracleException):
+    """This transaction is over platform-wide velocity limit. Consider increasing velocity limits."""
+    pass
+
+
 class OracleDeferralException(OracleException):
     """Deferred transaction due to required verifications and/or delay"""
 
@@ -139,7 +144,7 @@ class Oracle(object):
     def set_wallet_agent(self, agent):
         self._wallet_agent = agent
 
-    def _create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx, verifications=None):
+    def _create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx, verifications=None, callback=None):
         """:nodoc:"""
         tx = deepcopy(tx)  # keep original Tx object intact, so that it is not mutated by fix_input_scripts below.
         # Have the Oracle sign the tx
@@ -172,11 +177,13 @@ class Oracle(object):
         }
         if spend_id:
             req['spendId'] = spend_id
+        if callback:
+            req['callback'] = callback
         if verifications:
             req['verifications'] = verifications
         return req
 
-    def sign(self, tx, spend_id=None, verifications=None):
+    def sign(self, tx, spend_id=None, verifications=None, callback=None):
         """
         Have the Oracle sign the transaction
 
@@ -191,9 +198,9 @@ class Oracle(object):
         """
         input_chain_paths = [x.path if isinstance(x, AccountTxIn) else None for x in tx.txs_in]
         output_chain_paths = [x.path if isinstance(x, AccountTxOut) else None for x in tx.txs_out]
-        return self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id, verifications)
+        return self.sign_with_paths(tx, input_chain_paths, output_chain_paths, spend_id, verifications, callback=callback)
 
-    def sign_with_paths(self, tx, input_chain_paths, output_chain_paths, spend_id=None, verifications=None):
+    def sign_with_paths(self, tx, input_chain_paths, output_chain_paths, spend_id=None, verifications=None, callback=None):
         """
         Have the Oracle sign the transaction
 
@@ -210,7 +217,7 @@ class Oracle(object):
         :return: a dictionary with the transaction in 'transaction' if successful
         :rtype: dict
         """
-        req = self._create_oracle_request(input_chain_paths, output_chain_paths, spend_id, tx, verifications)
+        req = self._create_oracle_request(input_chain_paths, output_chain_paths, spend_id, tx, verifications, callback=callback)
         body = json.dumps(req)
         url = self._url() + "/transactions"
         if self.verbose > 0:
@@ -241,6 +248,8 @@ class Oracle(object):
             raise OracleRejectionException()
         elif result.get('result') == 'locked':
             raise OracleLockoutException()
+        elif result.get('error') == 'Platform  velocity  hard-limit  exceeded':
+            raise OraclePlatformVelocityHardLimitException('Platform  velocity  hard-limit  exceeded')
         elif response.status_code == 200 or response.status_code == 400:
             raise OracleError(response.content)
         else:

@@ -54,30 +54,17 @@ class MasterKey(BIP32Node):
         return cls.from_hwif(key)
 
     def account_for_path(self, path):
-        return AccountKey.from_key(self.subkey_for_path(path).hwif(as_private=True))
+        return AccountKey.from_key(self.subkey_for_path(path).hwif(as_private=self.is_private()))
 
     def electrum_account(self, n):
         return self.account_for_path("0H/%s" % (n,))
 
-    def bip32_account(self, n):
-        return self.account_for_path("%sH" % (n,))
+    def bip32_account(self, n, hardened=True):
+        return self.account_for_path("%s%s" % (n, 'H' if hardened else ''))
 
     def bip44_account(self, n, purpose=0, coin=0):
         return self.account_for_path("%sH/%sH/%sH" % (purpose, coin, n))
 
-
-class ElectrumMasterKey(BIP32Node):
-    """Electrum 'Master' key (m/0' or M/0').  Normally used for external Electrum keychains that are
-    participating in a multisig relationship"""
-    @classmethod
-    def from_key(cls, key):
-        return cls.from_hwif(key)
-
-    def account_for_path(self, path):
-        return AccountKey.from_key(self.subkey_for_path(path).hwif())
-
-    def electrum_account(self, n):
-        return self.account_for_path("%s" % (n,))
 
 TX_FEE_PER_THOUSAND_BYTES = 1000
 
@@ -293,7 +280,7 @@ class Account(object):
         spendables.append(spend)
         txs_in.append(AccountTxIn(spend.tx_hash, spend.tx_out_index, script=b'', sequence=4294967295, path=self.path_for_check(addr)))
 
-    def tx(self, payables):
+    def tx(self, payables, change_address=None):
         """
         Construct a transaction with available spendables
         :param list[(str, int)] payables: tuple of address and amount
@@ -327,7 +314,7 @@ class Account(object):
             total += spend.coin_value
 
         if total > send_amount + fee + DUST:
-            addr = self.current_change_address()
+            addr = change_address or self.current_change_address()
             script = standard_tx_out_script(addr)
             txs_out.append(AccountTxOut(total - send_amount - fee, script, self.path_for_check(addr)))
         elif total < send_amount + fee:
