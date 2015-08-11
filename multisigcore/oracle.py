@@ -1,19 +1,17 @@
 from __future__ import print_function
-import json
 import uuid
+from copy import deepcopy
 
 import dateutil.tz
 import dateutil.parser
 import requests
-from copy import deepcopy
+from pycoin.ecdsa import generator_secp256k1
 
 from pycoin.tx import Tx
-from pycoin.ecdsa import generator_secp256k1
-from pycoin.serialize import b2h, stream_to_bytes
+from pycoin.serialize import stream_to_bytes
 from .hierarchy import *
 from pycoin.tx.script.tools import *
 from pycoin.tx.script import der
-
 
 __author__ = 'sserrano, devrandom'
 
@@ -108,6 +106,15 @@ class PersonalInformation(object):
         object.__setattr__(self, 'phone_code_sms', phone_code_sms)
         object.__setattr__(self, 'phone_force_voice', phone_force_voice)
 
+class RequestLogger(dict):
+    """
+    A base class for request logging.  Does nothing.
+    """
+    def before(self, method, url, headers=None, body=None, **kwargs):
+        pass
+
+    def after(self, method, url, response, **kwargs):
+        pass
 
 class Oracle(object):
     """Keep track of a single Oracle account, including user keys and oracle master public key"""
@@ -129,6 +136,8 @@ class Oracle(object):
         self.num_oracle_keys = num_oracle_keys
         self.verbose = 0
         self._account.add_oracle(self)
+        self._request_logger = RequestLogger()
+        self._default_headers = {'content-type': 'application/json'}
 
     @property
     def account(self):
@@ -140,9 +149,18 @@ class Oracle(object):
     def wallet_agent(self):
         return self._wallet_agent
 
-    @wallet_agent.getter
-    def set_wallet_agent(self, agent):
+    @wallet_agent.setter
+    def wallet_agent(self, agent):
         self._wallet_agent = agent
+
+    @property
+    def request_logger(self):
+        return self._request_logger
+
+    @request_logger.setter
+    def request_logger(self, _logger):
+        """:type _logger: RequestLogger"""
+        self._request_logger = _logger
 
     def _create_oracle_request(self, input_chain_paths, output_chain_paths, spend_id, tx, verifications=None, callback=None):
         """:nodoc:"""
@@ -192,7 +210,7 @@ class Oracle(object):
         :param spend_id: an additional hex ID to disambiguate sends to the same outputs
         :type spend_id: str
         :param verifications: an optional dictionary with authorization code for each verification type.  Keys include "otp" and "code" (for SMS).
-        :type dict of [str, str]
+        :type verifications: dict of [str, str]
         :return: a dictionary with the transaction in 'transaction' if successful
         :rtype: dict
         """
@@ -213,7 +231,7 @@ class Oracle(object):
         :param spend_id: an additional hex ID to disambiguate sends to the same outputs
         :type spend_id: str
         :param verifications: an optional dictionary with authorization code for each verification type.  Keys include "otp" and "code" (for SMS).
-        :type dict of [str, str]
+        :type verifications: dict of [str, str]
         :return: a dictionary with the transaction in 'transaction' if successful
         :rtype: dict
         """
@@ -222,7 +240,9 @@ class Oracle(object):
         url = self._url() + "/transactions"
         if self.verbose > 0:
             print(body)
-        response = requests.post(url, body, headers={'content-type': 'application/json'})
+        self._request_logger.before('post', url, self._default_headers, body)
+        response = requests.post(url, body, headers=self._default_headers)
+        self._request_logger.after('post', url, response)
         if response.status_code >= 500:
             raise OracleInternalError(response.content)
         result = response.json()
@@ -268,7 +288,9 @@ class Oracle(object):
         if self._account.complete:
             raise Exception("the account for this Oracle is already complete")
         url = self._url()
+        self._request_logger.before('get', url)
         response = requests.get(url)
+        self._request_logger.after('get', url)
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
             self._account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
@@ -281,7 +303,8 @@ class Oracle(object):
         else:
             raise Error("Unknown response %d" % (response.status_code,))
 
-    def populate_pii(self, personal_info):
+    @staticmethod
+    def populate_pii(personal_info):
         pii = {}
         if personal_info.email:
             pii['email'] = personal_info.email
@@ -328,7 +351,9 @@ class Oracle(object):
         r['keys'] = [k.hwif() for k in self._account.keys]
         body = json.dumps(r)
         url = self._url()
-        response = requests.post(url, body, headers={'content-type': 'application/json'})
+        self._request_logger.before('post', url, self._default_headers, body)
+        response = requests.post(url, body, headers=self._default_headers)
+        self._request_logger.after('post', url, response)
 
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
@@ -365,7 +390,9 @@ class Oracle(object):
             r['call'] = call
         body = json.dumps(r)
         url = self._url() + "/verifyPii"
-        response = requests.post(url, body, headers={'content-type': 'application/json'})
+        self._request_logger.before('post', url, self._default_headers, body)
+        response = requests.post(url, body, headers=self._default_headers)
+        self._request_logger.after('post', url, response)
 
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
