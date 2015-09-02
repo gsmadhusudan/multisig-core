@@ -1,8 +1,6 @@
 BitOasis / CryptoCorp's Multisig python API implementation using the pycoin library.
 [![Build Status](https://travis-ci.org/devrandom/multisig-core.svg?branch=master)](https://travis-ci.org/devrandom/multisig-core)
 
-Currently this requires the `p2sh` branch of `https://github.com/devrandom/pycoin.git`.
-
 Examples
 ===
 ```bash
@@ -63,4 +61,10 @@ Programmatic Examples
     res = oracle.sign(tx, "spend003")
     print(res)
     print(res.transaction.as_hex())
+```
+
+Testing
+===
+```bash
+    python -m unittest discover
 ```

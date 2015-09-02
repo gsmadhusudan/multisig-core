@@ -30,7 +30,7 @@ class LazySecretExponentDBWithNetwork(LazySecretExponentDB):
         return None
 
 
-def local_sign(tx, scripts, keys):
+def local_sign(tx, redeem_scripts, keys):
     """
     Utility for locally signing a multisig transaction
 
@@ -40,12 +40,9 @@ def local_sign(tx, scripts, keys):
     :return:
     """
     lookup = None
-    if scripts:
-        raw_scripts = [script.script() for script in scripts]
+    if redeem_scripts:
+        raw_scripts = [script.script() for script in redeem_scripts]
         lookup = build_p2sh_lookup(raw_scripts)
-        # FIXME hack to work around broken p2sh signing in pycoin
-        for i in range(len(tx.unspents)):
-            tx.unspents[i].script = raw_scripts[i]
     if keys:
         netcode = keys[0]._netcode
     else:
