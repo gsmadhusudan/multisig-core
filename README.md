@@ -62,3 +62,9 @@ Programmatic Examples
     print(res)
     print(res.transaction.as_hex())
 ```
+
+Testing
+===
+```bash
+    python -m unittest discover
+```
