@@ -5,9 +5,8 @@ from copy import deepcopy
 import dateutil.tz
 import dateutil.parser
 import requests
-from pycoin.ecdsa import generator_secp256k1
-
 from pycoin.tx import Tx
+from pycoin.ecdsa import generator_secp256k1
 from pycoin.serialize import stream_to_bytes
 from .hierarchy import *
 from pycoin.tx.script.tools import *
@@ -422,6 +421,4 @@ def fix_input_script(inp, redeem_script):
         if op == dummy:
             op = 'OP_0'
         ops1.append(op)
-    # FIXME hack to add redeem script omitted by pycoin
-    ops1.append(b2h(redeem_script))
     inp.script = compile(' '.join(ops1))
