@@ -112,7 +112,7 @@ class RequestLogger(dict):
     def before(self, method, url, headers=None, body=None, **kwargs):
         pass
 
-    def after(self, method, url, response, **kwargs):
+    def after(self, method, url, response, headers=None, request_body=None, **kwargs):
         pass
 
 class Oracle(object):
@@ -241,7 +241,7 @@ class Oracle(object):
             print(body)
         self._request_logger.before('post', url, self._default_headers, body)
         response = requests.post(url, body, headers=self._default_headers)
-        self._request_logger.after('post', url, response)
+        self._request_logger.after('post', url, response, self._default_headers, body)
         if response.status_code >= 500:
             raise OracleInternalError(response.content)
         result = response.json()
@@ -289,7 +289,7 @@ class Oracle(object):
         url = self._url()
         self._request_logger.before('get', url)
         response = requests.get(url)
-        self._request_logger.after('get', url)
+        self._request_logger.after('get', url, response)
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
             self._account.add_keys([AccountKey.from_key(s) for s in result['keys']['default']])
@@ -352,7 +352,7 @@ class Oracle(object):
         url = self._url()
         self._request_logger.before('post', url, self._default_headers, body)
         response = requests.post(url, body, headers=self._default_headers)
-        self._request_logger.after('post', url, response)
+        self._request_logger.after('post', url, response, self._default_headers, body)
 
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
@@ -391,7 +391,7 @@ class Oracle(object):
         url = self._url() + "/verifyPii"
         self._request_logger.before('post', url, self._default_headers, body)
         response = requests.post(url, body, headers=self._default_headers)
-        self._request_logger.after('post', url, response)
+        self._request_logger.after('post', url, response, self._default_headers, body)
 
         result = response.json()
         if response.status_code == 200 and result.get('result', None) == 'success':
