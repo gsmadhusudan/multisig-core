@@ -112,7 +112,7 @@ class RequestLogger(dict):
     def before(self, method, url, headers=None, body=None, **kwargs):
         pass
 
-    def after(self, method, url, response, headers=None, request_body=None, **kwargs):
+    def after(self, method, url, response, request_headers=None, request_body=None, **kwargs):
         pass
 
 class Oracle(object):
